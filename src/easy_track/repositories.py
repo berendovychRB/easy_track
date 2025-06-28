@@ -1,0 +1,330 @@
+import logging
+from datetime import datetime, date, timedelta
+from typing import List, Optional, Dict
+from sqlalchemy import select, desc, func
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+from .models import User, MeasurementType, UserMeasurementType, Measurement
+
+logger = logging.getLogger(__name__)
+
+
+class UserRepository:
+    """Repository for User operations."""
+
+    @staticmethod
+    async def create_user(session: AsyncSession, telegram_id: int, username: str = None,
+                         first_name: str = None, last_name: str = None) -> User:
+        """Create a new user."""
+        user = User(
+            telegram_id=telegram_id,
+            username=username,
+            first_name=first_name,
+            last_name=last_name
+        )
+        session.add(user)
+        await session.flush()
+        return user
+
+    @staticmethod
+    async def get_user_by_telegram_id(session: AsyncSession, telegram_id: int) -> Optional[User]:
+        """Get user by Telegram ID."""
+        result = await session.execute(
+            select(User).where(User.telegram_id == telegram_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_user_by_id(session: AsyncSession, user_id: int) -> Optional[User]:
+        """Get user by ID."""
+        result = await session.execute(
+            select(User).where(User.id == user_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def update_user(session: AsyncSession, user_id: int, **kwargs) -> Optional[User]:
+        """Update user information."""
+        user = await UserRepository.get_user_by_id(session, user_id)
+        if user:
+            for key, value in kwargs.items():
+                if hasattr(user, key):
+                    setattr(user, key, value)
+            await session.flush()
+        return user
+
+
+class MeasurementTypeRepository:
+    """Repository for MeasurementType operations."""
+
+    @staticmethod
+    async def get_all_active_types(session: AsyncSession) -> List[MeasurementType]:
+        """Get all active measurement types."""
+        result = await session.execute(
+            select(MeasurementType)
+            .where(MeasurementType.is_active == True)
+            .order_by(MeasurementType.name)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_type_by_id(session: AsyncSession, type_id: int) -> Optional[MeasurementType]:
+        """Get measurement type by ID."""
+        result = await session.execute(
+            select(MeasurementType).where(MeasurementType.id == type_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_type_by_name(session: AsyncSession, name: str) -> Optional[MeasurementType]:
+        """Get measurement type by name."""
+        result = await session.execute(
+            select(MeasurementType).where(MeasurementType.name == name)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def create_measurement_type(session: AsyncSession, name: str, unit: str,
+                                    description: str = None) -> MeasurementType:
+        """Create a new measurement type."""
+        measurement_type = MeasurementType(
+            name=name,
+            unit=unit,
+            description=description
+        )
+        session.add(measurement_type)
+        await session.flush()
+        return measurement_type
+
+
+class UserMeasurementTypeRepository:
+    """Repository for UserMeasurementType operations."""
+
+    @staticmethod
+    async def get_user_measurement_types(session: AsyncSession, user_id: int) -> List[UserMeasurementType]:
+        """Get all active measurement types for a user."""
+        try:
+            logger.debug(f"Fetching measurement types for user {user_id}")
+
+            # Use simple SQLAlchemy query with explicit boolean comparison
+            result = await session.execute(
+                select(UserMeasurementType)
+                .options(selectinload(UserMeasurementType.measurement_type))
+                .where(UserMeasurementType.user_id == user_id)
+                .where(UserMeasurementType.is_active.is_(True))
+            )
+            user_types = result.scalars().all()
+
+            # Filter and sort in Python to avoid complex SQL
+            active_types = [ut for ut in user_types if ut.is_active]
+            sorted_types = sorted(active_types, key=lambda x: x.measurement_type.name if x.measurement_type else "")
+
+            logger.debug(f"Found {len(sorted_types)} active measurement types for user {user_id}")
+            return sorted_types
+
+        except Exception as e:
+            logger.error(f"Error fetching user measurement types for user {user_id}: {e}")
+            raise
+
+    @staticmethod
+    async def add_measurement_type_to_user(session: AsyncSession, user_id: int,
+                                         measurement_type_id: int) -> UserMeasurementType:
+        """Add a measurement type to user's tracking list."""
+        # Check if already exists
+        existing = await session.execute(
+            select(UserMeasurementType)
+            .where(UserMeasurementType.user_id == user_id)
+            .where(UserMeasurementType.measurement_type_id == measurement_type_id)
+        )
+        user_measurement_type = existing.scalar_one_or_none()
+
+        if user_measurement_type:
+            # Reactivate if exists but inactive
+            user_measurement_type.is_active = True
+        else:
+            # Create new
+            user_measurement_type = UserMeasurementType(
+                user_id=user_id,
+                measurement_type_id=measurement_type_id
+            )
+            session.add(user_measurement_type)
+
+        await session.flush()
+        return user_measurement_type
+
+    @staticmethod
+    async def remove_measurement_type_from_user(session: AsyncSession, user_id: int,
+                                              measurement_type_id: int) -> bool:
+        """Remove a measurement type from user's tracking list."""
+        result = await session.execute(
+            select(UserMeasurementType)
+            .where(UserMeasurementType.user_id == user_id)
+            .where(UserMeasurementType.measurement_type_id == measurement_type_id)
+        )
+        user_measurement_type = result.scalar_one_or_none()
+
+        if user_measurement_type:
+            user_measurement_type.is_active = False
+            await session.flush()
+            return True
+        return False
+
+
+class MeasurementRepository:
+    """Repository for Measurement operations."""
+
+    @staticmethod
+    async def create_measurement(session: AsyncSession, user_id: int, measurement_type_id: int,
+                               value: float, measurement_date: datetime = None,
+                               notes: str = None) -> Measurement:
+        """Create a new measurement."""
+        if measurement_date is None:
+            measurement_date = datetime.now()
+
+        measurement = Measurement(
+            user_id=user_id,
+            measurement_type_id=measurement_type_id,
+            value=value,
+            measurement_date=measurement_date,
+            notes=notes
+        )
+        session.add(measurement)
+        await session.flush()
+        return measurement
+
+    @staticmethod
+    async def get_user_measurements(session: AsyncSession, user_id: int,
+                                  measurement_type_id: int = None,
+                                  limit: int = None) -> List[Measurement]:
+        """Get measurements for a user, optionally filtered by type."""
+        try:
+            logger.debug(f"Fetching measurements for user {user_id}, type: {measurement_type_id}, limit: {limit}")
+
+            query = (
+                select(Measurement)
+                .options(selectinload(Measurement.measurement_type))
+                .where(Measurement.user_id == user_id)
+            )
+
+            if measurement_type_id:
+                query = query.where(Measurement.measurement_type_id == measurement_type_id)
+
+            query = query.order_by(desc(Measurement.measurement_date))
+
+            if limit:
+                query = query.limit(limit)
+
+            result = await session.execute(query)
+            measurements = result.scalars().all()
+
+            logger.debug(f"Found {len(measurements)} measurements for user {user_id}")
+            return measurements
+
+        except Exception as e:
+            logger.error(f"Error fetching measurements for user {user_id}: {e}")
+            raise
+
+    @staticmethod
+    async def get_latest_measurement(session: AsyncSession, user_id: int,
+                                   measurement_type_id: int) -> Optional[Measurement]:
+        """Get the latest measurement for a specific type."""
+        try:
+            logger.debug(f"Fetching latest measurement for user {user_id}, type {measurement_type_id}")
+
+            result = await session.execute(
+                select(Measurement)
+                .options(selectinload(Measurement.measurement_type))
+                .where(Measurement.user_id == user_id)
+                .where(Measurement.measurement_type_id == measurement_type_id)
+                .order_by(desc(Measurement.measurement_date))
+                .limit(1)
+            )
+            measurement = result.scalar_one_or_none()
+
+            if measurement:
+                logger.debug(f"Found latest measurement: {measurement.value} on {measurement.measurement_date}")
+            else:
+                logger.debug(f"No measurements found for user {user_id}, type {measurement_type_id}")
+
+            return measurement
+
+        except Exception as e:
+            logger.error(f"Error fetching latest measurement for user {user_id}, type {measurement_type_id}: {e}")
+            raise
+
+    @staticmethod
+    async def get_measurement_history(session: AsyncSession, user_id: int,
+                                    measurement_type_id: int, days: int = 30) -> List[Measurement]:
+        """Get measurement history for a specific type within given days."""
+        cutoff_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        cutoff_date = cutoff_date.replace(day=cutoff_date.day - days)
+
+        result = await session.execute(
+            select(Measurement)
+            .options(selectinload(Measurement.measurement_type))
+            .where(Measurement.user_id == user_id)
+            .where(Measurement.measurement_type_id == measurement_type_id)
+            .where(Measurement.measurement_date >= cutoff_date)
+            .order_by(Measurement.measurement_date)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_measurement_stats(session: AsyncSession, user_id: int,
+                                  measurement_type_id: int) -> dict:
+        """Get basic stats for a measurement type."""
+        result = await session.execute(
+            select(
+                func.count(Measurement.id).label('count'),
+                func.avg(Measurement.value).label('average'),
+                func.min(Measurement.value).label('minimum'),
+                func.max(Measurement.value).label('maximum')
+            )
+            .where(Measurement.user_id == user_id)
+            .where(Measurement.measurement_type_id == measurement_type_id)
+        )
+        stats = result.first()
+        return {
+            'count': stats.count or 0,
+            'average': round(stats.average, 2) if stats.average else 0,
+            'minimum': stats.minimum or 0,
+            'maximum': stats.maximum or 0
+        }
+
+    @staticmethod
+    async def get_measurements_by_date(session: AsyncSession, user_id: int,
+                                     days: int = 30) -> Dict[str, List[Measurement]]:
+        """Get all user measurements grouped by date."""
+        try:
+            logger.debug(f"Fetching measurements by date for user {user_id}, last {days} days")
+
+            if days > 0:
+                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = cutoff_date.replace(hour=0, minute=0, second=0, microsecond=0)
+            else:
+                # All time
+                cutoff_date = datetime(2000, 1, 1)
+
+            result = await session.execute(
+                select(Measurement)
+                .options(selectinload(Measurement.measurement_type))
+                .where(Measurement.user_id == user_id)
+                .where(Measurement.measurement_date >= cutoff_date)
+                .order_by(desc(Measurement.measurement_date))
+            )
+            measurements = result.scalars().all()
+
+            # Group measurements by date
+            grouped_measurements = {}
+            for measurement in measurements:
+                date_key = measurement.measurement_date.strftime("%d.%m.%Y")
+                if date_key not in grouped_measurements:
+                    grouped_measurements[date_key] = []
+                grouped_measurements[date_key].append(measurement)
+
+            logger.debug(f"Found measurements for {len(grouped_measurements)} dates")
+            return grouped_measurements
+
+        except Exception as e:
+            logger.error(f"Error fetching measurements by date for user {user_id}: {e}")
+            raise
