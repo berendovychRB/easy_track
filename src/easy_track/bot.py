@@ -2,13 +2,19 @@ import os
 import asyncio
 import logging
 from datetime import datetime
+from typing import Optional
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, CallbackQuery
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    CallbackQuery,
+    Message,
+)
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 
@@ -45,6 +51,9 @@ class UserStates(StatesGroup):
     waiting_for_measurement_value = State()
     selecting_measurement_types = State()
     selecting_language = State()
+    creating_custom_type_name = State()
+    creating_custom_type_unit = State()
+    creating_custom_type_description = State()
 
 
 class BotHandlers:
@@ -111,7 +120,7 @@ class BotHandlers:
                     await BotHandlers.get_user_language(user_id)
                     if "user_id" in locals()
                     else "en"
-                ),
+                )
             )
             await message.answer(error_text)
 
@@ -191,7 +200,7 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in language settings: {e}")
-            await callback.answer(translator.get("common.error", user_lang))
+            await callback.answer(translator.get("common.error", "en"))
 
     @staticmethod
     async def handle_set_language(callback: CallbackQuery):
@@ -481,8 +490,8 @@ class BotHandlers:
                         session, user_id
                     )
                 )
-                all_types = await MeasurementTypeRepository.get_all_active_types(
-                    session
+                all_types = await MeasurementTypeRepository.get_available_types_for_user(
+                    session, user_id
                 )
                 return user_types, all_types
 
@@ -533,7 +542,8 @@ class BotHandlers:
                     unit_name = translator.get_unit_name(
                         ut.measurement_type.unit, user_lang
                     )
-                    current_types_list.append(f"• {type_name} ({unit_name})")
+                    icon = "🔧" if ut.measurement_type.is_custom else "📏"
+                    current_types_list.append(f"{icon} {type_name} ({unit_name})")
                 current_types_text = "\n\n📋 " + "\n".join(current_types_list)
 
             message_text = f"{title}\n\n{description}{current_types_text}"
@@ -558,6 +568,7 @@ class BotHandlers:
         """Handle adding measurement types to user."""
         try:
             user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
 
             async def _get_available_types(session):
                 user_types = (
@@ -565,8 +576,10 @@ class BotHandlers:
                         session, user_id
                     )
                 )
-                all_types = await MeasurementTypeRepository.get_all_active_types(
-                    session
+                all_types = await (
+                    MeasurementTypeRepository.get_available_types_for_user(
+                        session, user_id
+                    )
                 )
                 user_type_ids = {ut.measurement_type_id for ut in user_types}
                 return [t for t in all_types if t.id not in user_type_ids]
@@ -575,27 +588,38 @@ class BotHandlers:
                 _get_available_types
             )
 
-            if not available_types:
-                await callback.answer(
-                    "✅ You're already tracking all available measurement types!"
-                )
-                return
-
             keyboard = InlineKeyboardBuilder()
+
+            # Add available measurement types
             for mtype in available_types:
+                icon = "🔧" if mtype.is_custom else "➕"
                 keyboard.add(
                     InlineKeyboardButton(
-                        text=f"➕ {mtype.name} ({mtype.unit})",
+                        text=f"{icon} {mtype.name} ({mtype.unit})",
                         callback_data=f"add_type_{mtype.id}",
                     )
                 )
+
+            # Add "Create Custom Type" button
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("custom_types.create_button", user_lang),
+                    callback_data="create_custom_type"
+                )
+            )
+
             keyboard.add(
                 InlineKeyboardButton(text="🔙 Back", callback_data="manage_types")
             )
             keyboard.adjust(1)
 
+            if not available_types:
+                message_text = translator.get("add_types.no_available", user_lang)
+            else:
+                message_text = translator.get("add_types.select", user_lang)
+
             await callback.message.edit_text(
-                "➕ Select measurement types to add:", reply_markup=keyboard.as_markup()
+                message_text, reply_markup=keyboard.as_markup()
             )
 
         except Exception as e:
@@ -627,6 +651,277 @@ class BotHandlers:
         except Exception as e:
             logger.error(f"Error in handle_add_type_confirm: {e}")
             await callback.answer("❌ Error occurred. Please try again.")
+
+    @staticmethod
+    async def handle_create_custom_type(callback: CallbackQuery, state: FSMContext):
+        """Start the custom measurement type creation flow."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            await state.set_state(UserStates.creating_custom_type_name)
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("custom_types.cancel", user_lang),
+                    callback_data="add_types"
+                )
+            )
+
+            title_text = translator.get("custom_types.title", user_lang)
+            prompt_text = translator.get("custom_types.name_prompt", user_lang)
+
+            await callback.message.edit_text(
+                f"{title_text}\n\n{prompt_text}",
+                reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_create_custom_type: {e}")
+            await callback.answer(translator.get("common.error", "en"))
+
+    @staticmethod
+    async def handle_custom_type_name(message: Message, state: FSMContext):
+        """Handle custom type name input."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            name = message.text.strip()
+
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Validate name length
+            if len(name) < 2:
+                await message.reply(
+                    translator.get("custom_types.name_too_short", user_lang)
+                )
+                return
+
+            if len(name) > 50:
+                await message.reply(
+                    translator.get("custom_types.name_too_long", user_lang)
+                )
+                return
+
+            # Check if name already exists
+            async def _check_name_exists(session):
+                return await (
+                    MeasurementTypeRepository.check_custom_type_name_exists(
+                        session, name, user_id
+                    )
+                )
+
+            name_exists = await DatabaseManager.execute_with_session(
+                _check_name_exists
+            )
+
+            if name_exists:
+                await message.reply(
+                    translator.get("custom_types.name_exists", user_lang, name=name)
+                )
+                return
+
+            # Store the name and move to next state
+            await state.update_data(custom_type_name=name)
+            await state.set_state(UserStates.creating_custom_type_unit)
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("custom_types.cancel", user_lang),
+                    callback_data="add_types"
+                )
+            )
+
+            await message.reply(
+                f"✅ Name: '{name}'\n\n{translator.get('custom_types.unit_prompt', user_lang)}",
+                reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_custom_type_name: {e}")
+            await message.reply(translator.get("common.error", "en"))
+
+    @staticmethod
+    async def handle_custom_type_unit(message: Message, state: FSMContext):
+        """Handle custom type unit input."""
+        try:
+            unit = message.text.strip()
+
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Validate unit length
+            if len(unit) < 1:
+                await message.reply(
+                    translator.get("custom_types.unit_empty", user_lang)
+                )
+                return
+
+            if len(unit) > 10:
+                await message.reply(
+                    translator.get("custom_types.unit_too_long", user_lang)
+                )
+                return
+
+            # Store the unit and move to next state
+            await state.update_data(custom_type_unit=unit)
+            await state.set_state(UserStates.creating_custom_type_description)
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("custom_types.skip_description", user_lang),
+                    callback_data="skip_description"
+                )
+            )
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("custom_types.cancel", user_lang),
+                    callback_data="add_types"
+                )
+            )
+            keyboard.adjust(1)
+
+            data = await state.get_data()
+            await message.reply(
+                f"✅ Name: '{data['custom_type_name']}'\n"
+                f"✅ Unit: '{unit}'\n\n"
+                f"{translator.get('custom_types.description_prompt', user_lang)}",
+                reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_custom_type_unit: {e}")
+            await message.reply(translator.get("common.error", "en"))
+
+    @staticmethod
+    async def handle_custom_type_description(message: Message, state: FSMContext):
+        """Handle custom type description input."""
+        try:
+            description = message.text.strip()
+
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Validate description length
+            if len(description) > 200:
+                await message.reply(
+                    translator.get("custom_types.description_too_long", user_lang)
+                )
+                return
+
+            await BotHandlers.create_custom_measurement_type(message, state, description)
+
+        except Exception as e:
+            logger.error(f"Error in handle_custom_type_description: {e}")
+            await message.reply(translator.get("common.error", "en"))
+
+    @staticmethod
+    async def handle_skip_description(callback: CallbackQuery, state: FSMContext):
+        """Handle skipping description and create the custom type."""
+        try:
+            await BotHandlers.create_custom_measurement_type(
+                callback.message, state, None
+            )
+        except Exception as e:
+            logger.error(f"Error in handle_skip_description: {e}")
+            await callback.answer(translator.get("common.error", "en"))
+
+    @staticmethod
+    async def create_custom_measurement_type(
+        message: Message, state: FSMContext, description: Optional[str] = None
+    ):
+        """Create the custom measurement type and add it to user's tracking list."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            data = await state.get_data()
+
+            name = data['custom_type_name']
+            unit = data['custom_type_unit']
+
+            async def _create_and_add_type(session):
+                # Create the custom measurement type
+                custom_type = await (
+                    MeasurementTypeRepository.create_custom_measurement_type(
+                        session, name, unit, user_id, description
+                    )
+                )
+
+                # Automatically add it to user's tracking list
+                await (
+                    UserMeasurementTypeRepository.add_measurement_type_to_user(
+                        session, user_id, custom_type.id
+                    )
+                )
+
+                return custom_type
+
+            custom_type = await DatabaseManager.execute_with_session(
+                _create_and_add_type
+            )
+
+            # Clear the state
+            await state.clear()
+
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Show success message
+            if description:
+                success_message = translator.get(
+                    "custom_types.success_with_description",
+                    user_lang,
+                    name=custom_type.name,
+                    unit=custom_type.unit,
+                    description=description
+                )
+            else:
+                success_message = translator.get(
+                    "custom_types.success",
+                    user_lang,
+                    name=custom_type.name,
+                    unit=custom_type.unit
+                )
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.add_measurement", user_lang),
+                    callback_data="add_measurement"
+                )
+            )
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.manage_types", user_lang),
+                    callback_data="manage_types"
+                )
+            )
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_menu", user_lang),
+                    callback_data="back_to_menu"
+                )
+            )
+            keyboard.adjust(1)
+
+            await message.reply(
+                success_message,
+                reply_markup=keyboard.as_markup(),
+                parse_mode="Markdown"
+            )
+
+        except Exception as e:
+            logger.error(f"Error in create_custom_measurement_type: {e}")
+            user_lang = "en"
+            try:
+                user_id = await BotHandlers.get_or_create_user(message.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except:
+                pass
+            await message.reply(
+                translator.get("custom_types.error", user_lang)
+            )
+            await state.clear()
 
     @staticmethod
     async def handle_remove_types(callback: CallbackQuery):
@@ -1199,6 +1494,18 @@ dp.message.register(
     BotHandlers.handle_measurement_value,
     StateFilter(UserStates.waiting_for_measurement_value),
 )
+dp.message.register(
+    BotHandlers.handle_custom_type_name,
+    StateFilter(UserStates.creating_custom_type_name),
+)
+dp.message.register(
+    BotHandlers.handle_custom_type_unit,
+    StateFilter(UserStates.creating_custom_type_unit),
+)
+dp.message.register(
+    BotHandlers.handle_custom_type_description,
+    StateFilter(UserStates.creating_custom_type_description),
+)
 
 # Callback handlers
 dp.callback_query.register(
@@ -1211,6 +1518,12 @@ dp.callback_query.register(BotHandlers.handle_manage_types, F.data == "manage_ty
 dp.callback_query.register(BotHandlers.handle_add_types, F.data == "add_types")
 dp.callback_query.register(
     BotHandlers.handle_add_type_confirm, F.data.startswith("add_type_")
+)
+dp.callback_query.register(
+    BotHandlers.handle_create_custom_type, F.data == "create_custom_type"
+)
+dp.callback_query.register(
+    BotHandlers.handle_skip_description, F.data == "skip_description"
 )
 dp.callback_query.register(BotHandlers.handle_remove_types, F.data == "remove_types")
 dp.callback_query.register(

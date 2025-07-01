@@ -3,6 +3,7 @@ from typing import List, Optional
 from sqlalchemy import (
     Column,
     Integer,
+    BigInteger,
     String,
     DateTime,
     Float,
@@ -23,7 +24,7 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     telegram_id: Mapped[int] = mapped_column(
-        Integer, unique=True, nullable=False, index=True
+        BigInteger, unique=True, nullable=False, index=True
     )
     username: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     first_name: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
@@ -50,14 +51,27 @@ class MeasurementType(Base):
     __tablename__ = "measurement_types"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    name: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
     unit: Mapped[str] = mapped_column(
         String(20), nullable=False
     )  # cm, kg, inches, etc.
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_custom: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    created_by_user_id: Mapped[Optional[int]] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
+    )
+
+    # Add unique constraint for name per user (global for system types, per-user for custom types)
+    __table_args__ = (
+        UniqueConstraint(
+            "name",
+            "created_by_user_id",
+            name="uq_measurement_type_name_user"
+        ),
     )
 
     # Relationships
@@ -66,6 +80,9 @@ class MeasurementType(Base):
     )
     measurements: Mapped[List["Measurement"]] = relationship(
         "Measurement", back_populates="measurement_type"
+    )
+    created_by_user: Mapped[Optional["User"]] = relationship(
+        "User", foreign_keys=[created_by_user_id]
     )
 
 

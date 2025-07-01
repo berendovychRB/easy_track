@@ -88,7 +88,7 @@ class MeasurementTypeRepository:
         """Get all active measurement types."""
         result = await session.execute(
             select(MeasurementType)
-            .where(MeasurementType.is_active == True)
+            .where(MeasurementType.is_active.is_(True))
             .order_by(MeasurementType.name)
         )
         return result.scalars().all()
@@ -124,6 +124,89 @@ class MeasurementTypeRepository:
         session.add(measurement_type)
         await session.flush()
         return measurement_type
+
+    @staticmethod
+    async def create_custom_measurement_type(
+        session: AsyncSession,
+        name: str,
+        unit: str,
+        user_id: int,
+        description: str = None
+    ) -> MeasurementType:
+        """Create a new custom measurement type for a specific user."""
+        measurement_type = MeasurementType(
+            name=name,
+            unit=unit,
+            description=description,
+            is_custom=True,
+            created_by_user_id=user_id
+        )
+        session.add(measurement_type)
+        await session.flush()
+        return measurement_type
+
+    @staticmethod
+    async def get_user_custom_types(
+        session: AsyncSession, user_id: int
+    ) -> List[MeasurementType]:
+        """Get all custom measurement types created by a specific user."""
+        result = await session.execute(
+            select(MeasurementType)
+            .where(MeasurementType.created_by_user_id == user_id)
+            .where(MeasurementType.is_active.is_(True))
+            .order_by(MeasurementType.name)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_available_types_for_user(
+        session: AsyncSession, user_id: int
+    ) -> List[MeasurementType]:
+        """Get all measurement types available to a user (system + their custom types)."""
+        result = await session.execute(
+            select(MeasurementType)
+            .where(
+                (MeasurementType.is_custom.is_(False)) |
+                (MeasurementType.created_by_user_id == user_id)
+            )
+            .where(MeasurementType.is_active.is_(True))
+            .order_by(MeasurementType.name)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def check_custom_type_name_exists(
+        session: AsyncSession, name: str, user_id: int
+    ) -> bool:
+        """Check if a custom measurement type name already exists for a user."""
+        result = await session.execute(
+            select(MeasurementType)
+            .where(MeasurementType.name.ilike(name))
+            .where(
+                (MeasurementType.is_custom.is_(False)) |
+                (MeasurementType.created_by_user_id == user_id)
+            )
+        )
+        return result.scalar_one_or_none() is not None
+
+    @staticmethod
+    async def delete_custom_measurement_type(
+        session: AsyncSession, type_id: int, user_id: int
+    ) -> bool:
+        """Delete a custom measurement type if it belongs to the user."""
+        result = await session.execute(
+            select(MeasurementType)
+            .where(MeasurementType.id == type_id)
+            .where(MeasurementType.created_by_user_id == user_id)
+            .where(MeasurementType.is_custom.is_(True))
+        )
+        measurement_type = result.scalar_one_or_none()
+
+        if measurement_type:
+            measurement_type.is_active = False
+            await session.flush()
+            return True
+        return False
 
 
 class UserMeasurementTypeRepository:

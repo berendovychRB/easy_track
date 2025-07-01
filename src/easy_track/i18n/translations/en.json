@@ -24,7 +24,11 @@
     "yes": "✅ Yes",
     "no": "❌ No",
     "english": "🇺🇸 English",
-    "ukrainian": "🇺🇦 Українська"
+    "ukrainian": "🇺🇦 Українська",
+    "create_custom": "✨ Create Custom",
+    "skip": "⏭️ Skip",
+    "finish": "✅ Finish",
+    "continue": "➡️ Continue"
   },
   "language": {
     "select": "🌐 Select your language:",
@@ -48,10 +52,28 @@
   },
   "add_types": {
     "select": "➕ Select measurement types to add:",
-    "no_available": "ℹ️ All available measurement types are already added to your profile.",
+    "no_available": "✅ You're tracking all available measurement types!\n\n🎯 All predefined types are already in your tracking list\n🔧 Your custom types are also already active\n\n💡 Want to track something new?\nCreate a custom measurement type below!",
     "confirm": "Add the following measurement types?\n\n{types}",
     "success": "✅ Measurement types added successfully!",
     "error": "❌ Error adding measurement types. Please try again."
+  },
+  "custom_types": {
+    "create_button": "✨ Create Custom Type",
+    "title": "✨ Create Custom Measurement Type",
+    "name_prompt": "Please enter the name for your custom measurement type:\nExample: 'Forearm', 'Body Temperature', 'Blood Pressure', etc.",
+    "unit_prompt": "Now enter the unit of measurement:\nExamples: 'cm', 'kg', 'inches', '%', 'mmHg', '°C', etc.",
+    "description_prompt": "Optionally, enter a description for this measurement type:\nExample: 'Measurement taken around the forearm at its widest point'\n\nOr click 'Skip Description' to finish.",
+    "skip_description": "⏭️ Skip Description",
+    "name_too_short": "❌ Name must be at least 2 characters long. Please try again:",
+    "name_too_long": "❌ Name must be no more than 50 characters long. Please try again:",
+    "name_exists": "❌ A measurement type with name '{name}' already exists. Please choose a different name:",
+    "unit_empty": "❌ Unit cannot be empty. Please try again:",
+    "unit_too_long": "❌ Unit must be no more than 10 characters long. Please try again:",
+    "description_too_long": "❌ Description must be no more than 200 characters long. Please try again:",
+    "success": "✅ Custom measurement type created successfully!\n\n📏 **{name}** ({unit})\n\n🎯 **Your custom type is ready to use!**\n\n✅ Automatically added to your tracking list\n📊 Click 'Add Measurement' below to start tracking\n💡 You'll find it in your measurement options",
+    "success_with_description": "✅ Custom measurement type created successfully!\n\n📏 **{name}** ({unit})\n📝 {description}\n\n🎯 **Your custom type is ready to use!**\n\n✅ Automatically added to your tracking list\n📊 Click 'Add Measurement' below to start tracking\n💡 You'll find it in your measurement options",
+    "error": "❌ Error occurred while creating custom type. Please try again.",
+    "cancel": "❌ Cancel"
   },
   "remove_types": {
     "select": "➖ Select measurement types to remove:",
