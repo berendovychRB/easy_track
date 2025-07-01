@@ -1,5 +1,4 @@
 import json
-import os
 from typing import Dict, Any, Optional
 from pathlib import Path
 
@@ -30,7 +29,7 @@ class Translator:
             else:
                 self.translations[lang] = {}
 
-    def get(self, key: str, language: str = None, **kwargs) -> str:
+    def get(self, key: str, language: Optional[str] = None, **kwargs) -> str:
         """
         Get translated text by key.
 
@@ -103,15 +102,25 @@ class Translator:
         """Get list of supported language codes."""
         return self.supported_languages.copy()
 
-    def get_measurement_type_name(self, type_name: str, language: str = None) -> str:
+    def get_measurement_type_name(
+        self, type_name: str, language: Optional[str] = None
+    ) -> str:
         """Get localized measurement type name."""
-        key = f"measurement_types.{type_name.lower()}"
-        return self.get(key, language) if self.get(key, language) != key else type_name
+        # type_name is now expected to be the translation key directly
+        key = f"measurement_types.{type_name}"
+        translated = self.get(key, language)
+        # If translation not found, fallback to a formatted version of the key
+        if translated == key:
+            # Convert snake_case to Title Case as fallback
+            return type_name.replace("_", " ").title()
+        return translated
 
-    def get_unit_name(self, unit: str, language: str = None) -> str:
+    def get_unit_name(self, unit: str, language: Optional[str] = None) -> str:
         """Get localized unit name."""
         key = f"units.{unit.lower()}"
-        return self.get(key, language) if self.get(key, language) != key else unit
+        translated = self.get(key, language)
+        # If translation not found, return original unit
+        return translated if translated != key else unit
 
 
 # Global translator instance

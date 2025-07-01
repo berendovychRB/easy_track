@@ -130,7 +130,8 @@
     "forearm": "Forearm",
     "calf": "Calf",
     "shoulders": "Shoulders",
-    "body_fat": "Body Fat %"
+    "body_fat": "Body Fat %",
+    "muscle_mass": "Muscle Mass"
   },
   "units": {
     "kg": "kg",

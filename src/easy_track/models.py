@@ -68,9 +68,7 @@ class MeasurementType(Base):
     # Add unique constraint for name per user (global for system types, per-user for custom types)
     __table_args__ = (
         UniqueConstraint(
-            "name",
-            "created_by_user_id",
-            name="uq_measurement_type_name_user"
+            "name", "created_by_user_id", name="uq_measurement_type_name_user"
         ),
     )
 

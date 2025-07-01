@@ -120,7 +120,7 @@ class BotHandlers:
                     await BotHandlers.get_user_language(user_id)
                     if "user_id" in locals()
                     else "en"
-                )
+                ),
             )
             await message.answer(error_text)
 
@@ -308,7 +308,6 @@ class BotHandlers:
             import traceback
 
             logger.error(f"Traceback: {traceback.format_exc()}")
-            await callback.answer("❌ Error occurred. Please try again.")
 
     @staticmethod
     async def handle_measure_type(callback: CallbackQuery, state: FSMContext):
@@ -474,7 +473,10 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_measurement_value: {e}")
-            await message.answer("❌ Error saving measurement. Please try again.")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                message.from_user.id
+            )
+            await message.answer(translator.get("add_measurement.error", user_lang))
             await state.clear()
 
     @staticmethod
@@ -490,8 +492,10 @@ class BotHandlers:
                         session, user_id
                     )
                 )
-                all_types = await MeasurementTypeRepository.get_available_types_for_user(
-                    session, user_id
+                all_types = (
+                    await MeasurementTypeRepository.get_available_types_for_user(
+                        session, user_id
+                    )
                 )
                 return user_types, all_types
 
@@ -576,9 +580,11 @@ class BotHandlers:
                         session, user_id
                     )
                 )
-                all_types = await (
-                    MeasurementTypeRepository.get_available_types_for_user(
-                        session, user_id
+                all_types = (
+                    await (
+                        MeasurementTypeRepository.get_available_types_for_user(
+                            session, user_id
+                        )
                     )
                 )
                 user_type_ids = {ut.measurement_type_id for ut in user_types}
@@ -593,9 +599,14 @@ class BotHandlers:
             # Add available measurement types
             for mtype in available_types:
                 icon = "🔧" if mtype.is_custom else "➕"
+                # Translate measurement type name and unit
+                translated_name = translator.get_measurement_type_name(
+                    mtype.name, user_lang
+                )
+                translated_unit = translator.get_unit_name(mtype.unit, user_lang)
                 keyboard.add(
                     InlineKeyboardButton(
-                        text=f"{icon} {mtype.name} ({mtype.unit})",
+                        text=f"{icon} {translated_name} ({translated_unit})",
                         callback_data=f"add_type_{mtype.id}",
                     )
                 )
@@ -604,12 +615,15 @@ class BotHandlers:
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("custom_types.create_button", user_lang),
-                    callback_data="create_custom_type"
+                    callback_data="create_custom_type",
                 )
             )
 
             keyboard.add(
-                InlineKeyboardButton(text="🔙 Back", callback_data="manage_types")
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back", user_lang),
+                    callback_data="manage_types",
+                )
             )
             keyboard.adjust(1)
 
@@ -624,7 +638,10 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_add_types: {e}")
-            await callback.answer("❌ Error occurred. Please try again.")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_add_type_confirm(callback: CallbackQuery):
@@ -643,14 +660,18 @@ class BotHandlers:
 
             measurement_type = await DatabaseManager.execute_with_session(_add_type)
 
-            await callback.answer(
-                f"✅ Added {measurement_type.name} to your tracking list!"
+            translated_name = translator.get_measurement_type_name(
+                measurement_type.name, user_lang
             )
+            await callback.answer(f"✅ Added {translated_name} to your tracking list!")
             await BotHandlers.handle_add_types(callback)
 
         except Exception as e:
             logger.error(f"Error in handle_add_type_confirm: {e}")
-            await callback.answer("❌ Error occurred. Please try again.")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_create_custom_type(callback: CallbackQuery, state: FSMContext):
@@ -665,7 +686,7 @@ class BotHandlers:
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("custom_types.cancel", user_lang),
-                    callback_data="add_types"
+                    callback_data="add_types",
                 )
             )
 
@@ -673,8 +694,7 @@ class BotHandlers:
             prompt_text = translator.get("custom_types.name_prompt", user_lang)
 
             await callback.message.edit_text(
-                f"{title_text}\n\n{prompt_text}",
-                reply_markup=keyboard.as_markup()
+                f"{title_text}\n\n{prompt_text}", reply_markup=keyboard.as_markup()
             )
 
         except Exception as e:
@@ -705,15 +725,11 @@ class BotHandlers:
 
             # Check if name already exists
             async def _check_name_exists(session):
-                return await (
-                    MeasurementTypeRepository.check_custom_type_name_exists(
-                        session, name, user_id
-                    )
+                return await MeasurementTypeRepository.check_custom_type_name_exists(
+                    session, name, user_id
                 )
 
-            name_exists = await DatabaseManager.execute_with_session(
-                _check_name_exists
-            )
+            name_exists = await DatabaseManager.execute_with_session(_check_name_exists)
 
             if name_exists:
                 await message.reply(
@@ -729,13 +745,13 @@ class BotHandlers:
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("custom_types.cancel", user_lang),
-                    callback_data="add_types"
+                    callback_data="add_types",
                 )
             )
 
             await message.reply(
                 f"✅ Name: '{name}'\n\n{translator.get('custom_types.unit_prompt', user_lang)}",
-                reply_markup=keyboard.as_markup()
+                reply_markup=keyboard.as_markup(),
             )
 
         except Exception as e:
@@ -772,13 +788,13 @@ class BotHandlers:
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("custom_types.skip_description", user_lang),
-                    callback_data="skip_description"
+                    callback_data="skip_description",
                 )
             )
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("custom_types.cancel", user_lang),
-                    callback_data="add_types"
+                    callback_data="add_types",
                 )
             )
             keyboard.adjust(1)
@@ -788,7 +804,7 @@ class BotHandlers:
                 f"✅ Name: '{data['custom_type_name']}'\n"
                 f"✅ Unit: '{unit}'\n\n"
                 f"{translator.get('custom_types.description_prompt', user_lang)}",
-                reply_markup=keyboard.as_markup()
+                reply_markup=keyboard.as_markup(),
             )
 
         except Exception as e:
@@ -811,7 +827,9 @@ class BotHandlers:
                 )
                 return
 
-            await BotHandlers.create_custom_measurement_type(message, state, description)
+            await BotHandlers.create_custom_measurement_type(
+                message, state, description
+            )
 
         except Exception as e:
             logger.error(f"Error in handle_custom_type_description: {e}")
@@ -837,22 +855,22 @@ class BotHandlers:
             user_id = await BotHandlers.get_or_create_user(message.from_user)
             data = await state.get_data()
 
-            name = data['custom_type_name']
-            unit = data['custom_type_unit']
+            name = data["custom_type_name"]
+            unit = data["custom_type_unit"]
 
             async def _create_and_add_type(session):
                 # Create the custom measurement type
-                custom_type = await (
-                    MeasurementTypeRepository.create_custom_measurement_type(
-                        session, name, unit, user_id, description
+                custom_type = (
+                    await (
+                        MeasurementTypeRepository.create_custom_measurement_type(
+                            session, name, unit, user_id, description
+                        )
                     )
                 )
 
                 # Automatically add it to user's tracking list
-                await (
-                    UserMeasurementTypeRepository.add_measurement_type_to_user(
-                        session, user_id, custom_type.id
-                    )
+                await UserMeasurementTypeRepository.add_measurement_type_to_user(
+                    session, user_id, custom_type.id
                 )
 
                 return custom_type
@@ -873,33 +891,33 @@ class BotHandlers:
                     user_lang,
                     name=custom_type.name,
                     unit=custom_type.unit,
-                    description=description
+                    description=description,
                 )
             else:
                 success_message = translator.get(
                     "custom_types.success",
                     user_lang,
                     name=custom_type.name,
-                    unit=custom_type.unit
+                    unit=custom_type.unit,
                 )
 
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("buttons.add_measurement", user_lang),
-                    callback_data="add_measurement"
+                    callback_data="add_measurement",
                 )
             )
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("buttons.manage_types", user_lang),
-                    callback_data="manage_types"
+                    callback_data="manage_types",
                 )
             )
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("buttons.back_to_menu", user_lang),
-                    callback_data="back_to_menu"
+                    callback_data="back_to_menu",
                 )
             )
             keyboard.adjust(1)
@@ -907,7 +925,7 @@ class BotHandlers:
             await message.reply(
                 success_message,
                 reply_markup=keyboard.as_markup(),
-                parse_mode="Markdown"
+                parse_mode="Markdown",
             )
 
         except Exception as e:
@@ -918,9 +936,7 @@ class BotHandlers:
                 user_lang = await BotHandlers.get_user_language(user_id)
             except:
                 pass
-            await message.reply(
-                translator.get("custom_types.error", user_lang)
-            )
+            await message.reply(translator.get("custom_types.error", user_lang))
             await state.clear()
 
     @staticmethod
@@ -937,30 +953,42 @@ class BotHandlers:
             user_types = await DatabaseManager.execute_with_session(_get_user_types)
 
             if not user_types:
-                await callback.answer("❌ No measurement types to remove!")
+                await callback.answer(
+                    translator.get("remove_types.no_types", user_lang)
+                )
                 return
 
             keyboard = InlineKeyboardBuilder()
             for user_type in user_types:
+                # Translate measurement type name
+                translated_name = translator.get_measurement_type_name(
+                    user_type.measurement_type.name, user_lang
+                )
                 keyboard.add(
                     InlineKeyboardButton(
-                        text=f"➖ {user_type.measurement_type.name}",
+                        text=f"➖ {translated_name}",
                         callback_data=f"remove_type_{user_type.measurement_type.id}",
                     )
                 )
             keyboard.add(
-                InlineKeyboardButton(text="🔙 Back", callback_data="manage_types")
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back", user_lang),
+                    callback_data="manage_types",
+                )
             )
             keyboard.adjust(1)
 
             await callback.message.edit_text(
-                "➖ Select measurement types to remove:",
+                translator.get("remove_types.select", user_lang),
                 reply_markup=keyboard.as_markup(),
             )
 
         except Exception as e:
             logger.error(f"Error in handle_remove_types: {e}")
-            await callback.answer("❌ Error occurred. Please try again.")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_remove_type_confirm(callback: CallbackQuery):
@@ -983,17 +1011,23 @@ class BotHandlers:
             )
 
             if success:
+                translated_name = translator.get_measurement_type_name(
+                    measurement_type.name, user_lang
+                )
                 await callback.answer(
-                    f"✅ Removed {measurement_type.name} from your tracking list!"
+                    f"✅ Removed {translated_name} from your tracking list!"
                 )
             else:
-                await callback.answer("❌ Failed to remove measurement type.")
+                await callback.answer(translator.get("common.error", user_lang))
 
             await BotHandlers.handle_remove_types(callback)
 
         except Exception as e:
             logger.error(f"Error in handle_remove_type_confirm: {e}")
-            await callback.answer("❌ Error occurred. Please try again.")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_view_progress(callback: CallbackQuery):
@@ -1548,25 +1582,33 @@ dp.callback_query.register(BotHandlers.handle_back_to_menu, F.data == "back_to_m
 
 
 async def init_measurement_types():
-    """Initialize default measurement types."""
+    """Initialize default measurement types with translation keys."""
+    # Map translation keys to database names, units, and descriptions
+    # Using translation keys as the canonical reference
     default_types = [
-        ("Weight", "kg", "Body weight"),
-        ("Waist", "cm", "Waist circumference"),
-        ("Chest", "cm", "Chest circumference"),
-        ("Biceps", "cm", "Bicep circumference"),
-        ("Thigh", "cm", "Thigh circumference"),
-        ("Hip", "cm", "Hip circumference"),
-        ("Neck", "cm", "Neck circumference"),
-        ("Body Fat %", "%", "Body fat percentage"),
-        ("Muscle Mass", "kg", "Muscle mass"),
+        ("weight", "kg", "Body weight"),
+        ("height", "cm", "Body height"),
+        ("waist", "cm", "Waist circumference"),
+        ("chest", "cm", "Chest circumference"),
+        ("hips", "cm", "Hip circumference"),
+        ("bicep", "cm", "Bicep circumference"),
+        ("thigh", "cm", "Thigh circumference"),
+        ("neck", "cm", "Neck circumference"),
+        ("forearm", "cm", "Forearm circumference"),
+        ("calf", "cm", "Calf circumference"),
+        ("shoulders", "cm", "Shoulder width"),
+        ("body_fat", "%", "Body fat percentage"),
+        ("muscle_mass", "kg", "Muscle mass"),
     ]
 
     async def _create_types(session):
-        for name, unit, description in default_types:
-            existing = await MeasurementTypeRepository.get_type_by_name(session, name)
+        for translation_key, unit, description in default_types:
+            existing = await MeasurementTypeRepository.get_type_by_name(
+                session, translation_key
+            )
             if not existing:
                 await MeasurementTypeRepository.create_measurement_type(
-                    session, name, unit, description
+                    session, translation_key, unit, description
                 )
 
     await DatabaseManager.execute_with_session(_create_types)

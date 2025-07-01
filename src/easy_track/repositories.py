@@ -131,7 +131,7 @@ class MeasurementTypeRepository:
         name: str,
         unit: str,
         user_id: int,
-        description: str = None
+        description: str = None,
     ) -> MeasurementType:
         """Create a new custom measurement type for a specific user."""
         measurement_type = MeasurementType(
@@ -139,7 +139,7 @@ class MeasurementTypeRepository:
             unit=unit,
             description=description,
             is_custom=True,
-            created_by_user_id=user_id
+            created_by_user_id=user_id,
         )
         session.add(measurement_type)
         await session.flush()
@@ -166,8 +166,8 @@ class MeasurementTypeRepository:
         result = await session.execute(
             select(MeasurementType)
             .where(
-                (MeasurementType.is_custom.is_(False)) |
-                (MeasurementType.created_by_user_id == user_id)
+                (MeasurementType.is_custom.is_(False))
+                | (MeasurementType.created_by_user_id == user_id)
             )
             .where(MeasurementType.is_active.is_(True))
             .order_by(MeasurementType.name)
@@ -183,8 +183,8 @@ class MeasurementTypeRepository:
             select(MeasurementType)
             .where(MeasurementType.name.ilike(name))
             .where(
-                (MeasurementType.is_custom.is_(False)) |
-                (MeasurementType.created_by_user_id == user_id)
+                (MeasurementType.is_custom.is_(False))
+                | (MeasurementType.created_by_user_id == user_id)
             )
         )
         return result.scalar_one_or_none() is not None
