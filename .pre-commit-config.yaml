@@ -42,7 +42,7 @@ repos:
     rev: 6.1.0
     hooks:
       - id: flake8
-        args: [--max-line-length=88, --extend-ignore=E203,W503]
+        args: [--max-line-length=88, --extend-ignore=E203, W503]
         additional_dependencies:
           - flake8-docstrings
           - flake8-import-order
@@ -61,7 +61,7 @@ repos:
     rev: 1.7.5
     hooks:
       - id: bandit
-        args: ['-r', 'src/', '-f', 'json']
+        args: ["-r", "src/", "-f", "json"]
         exclude: ^tests/
 
   # Secrets detection
@@ -69,7 +69,7 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        args: ['--baseline', '.secrets.baseline']
+        args: ["--baseline", ".secrets.baseline"]
         exclude: .*\.lock$|^\.env\.example$
 
   # Dockerfile linting
@@ -94,12 +94,12 @@ repos:
       - id: shellcheck
         args: [--severity=warning]
 
-  # Python docstring formatting
-  - repo: https://github.com/pycqa/docformatter
-    rev: v1.7.5
-    hooks:
-      - id: docformatter
-        args: [--in-place, --wrap-summaries=88, --wrap-descriptions=88]
+  # Python docstring formatting (temporarily disabled due to pre-commit issue)
+  # - repo: https://github.com/pycqa/docformatter
+  #   rev: v1.7.4
+  #   hooks:
+  #     - id: docformatter
+  #       args: [--in-place, --wrap-summaries=88, --wrap-descriptions=88]
 
   # Requirements.txt sorting
   - repo: https://github.com/pre-commit/mirrors-pip-compile
@@ -131,8 +131,8 @@ ci:
 
     for more information, see https://pre-commit.ci
   autofix_prs: true
-  autoupdate_branch: ''
-  autoupdate_commit_msg: '[pre-commit.ci] pre-commit autoupdate'
+  autoupdate_branch: ""
+  autoupdate_commit_msg: "[pre-commit.ci] pre-commit autoupdate"
   autoupdate_schedule: weekly
   skip: []
   submodules: false

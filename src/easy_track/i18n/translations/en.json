@@ -15,6 +15,7 @@
     "view_by_date": "📅 View by Date",
     "statistics": "📈 Statistics",
     "language_settings": "🌐 Language",
+    "notifications": "🔔 Notifications",
     "back_to_menu": "🔙 Back to Menu",
     "back": "◀️ Back",
     "cancel": "❌ Cancel",
@@ -28,7 +29,19 @@
     "create_custom": "✨ Create Custom",
     "skip": "⏭️ Skip",
     "finish": "✅ Finish",
-    "continue": "➡️ Continue"
+    "continue": "➡️ Continue",
+    "daily": "📅 Daily",
+    "monday": "📅 Monday",
+    "tuesday": "📅 Tuesday",
+    "wednesday": "📅 Wednesday",
+    "thursday": "📅 Thursday",
+    "friday": "📅 Friday",
+    "saturday": "📅 Saturday",
+    "sunday": "📅 Sunday",
+    "enable": "✅ Enable",
+    "disable": "❌ Disable",
+    "delete": "🗑️ Delete",
+    "edit": "✏️ Edit"
   },
   "language": {
     "select": "🌐 Select your language:",
@@ -148,8 +161,47 @@
     "date_format": "{day}/{month}/{year}",
     "datetime_format": "{day}/{month}/{year} {hour}:{minute}"
   },
+  "notifications": {
+    "menu_title": "🔔 Notification Settings",
+    "menu_description": "Set up reminders to take your measurements regularly.",
+    "add_notification": "➕ Add Notification",
+    "manage_notifications": "⚙️ Manage Notifications",
+    "view_notifications": "👁️ View Notifications",
+    "no_notifications": "🔔 You don't have any notification schedules set up yet.\n\nClick \"Add Notification\" to create your first reminder!",
+    "select_frequency": "📅 How often would you like to be reminded?",
+    "select_time": "🕐 What time would you like to receive notifications?\n\nPlease enter time in 24-hour format (HH:MM):\nExample: 09:00, 14:30, 21:00",
+    "invalid_time": "❌ Invalid time format. Please enter time in HH:MM format (00:00 to 23:59).\nExample: 09:00, 14:30, 21:00",
+    "schedule_exists": "⚠️ You already have a notification scheduled for this time and frequency.\n\nPlease choose a different time or frequency.",
+    "success_created": "✅ Notification schedule created successfully!\n\n🔔 You will receive reminders {frequency} at {time} (your local time)\n📱 Make sure to keep notifications enabled in your Telegram settings",
+    "success_updated": "✅ Notification schedule updated successfully!",
+    "success_deleted": "✅ Notification schedule deleted successfully!",
+    "error": "❌ Error managing notification schedule. Please try again.",
+    "list_title": "🔔 Your Notification Schedules:",
+    "list_item_daily": "📅 Daily at {time}",
+    "list_item_weekly": "📅 Every {day} at {time}",
+    "list_status_active": "✅ Active",
+    "list_status_inactive": "❌ Inactive",
+    "select_to_manage": "Select a notification to manage:",
+    "manage_title": "⚙️ Manage Notification",
+    "manage_schedule": "📅 {frequency} at {time}",
+    "manage_status": "Status: {status}",
+    "confirm_delete": "⚠️ Are you sure you want to delete this notification schedule?\n\n📅 {frequency} at {time}",
+    "reminder_message": "🔔 Measurement Reminder!\n\n📊 It's time to take your measurements!\n\n💡 Track your progress consistently to see better results.\n\n📱 Use /menu to add your measurements now.",
+    "frequency_daily": "daily",
+    "frequency_weekly": "every {day}"
+  },
+  "days": {
+    "monday": "Monday",
+    "tuesday": "Tuesday",
+    "wednesday": "Wednesday",
+    "thursday": "Thursday",
+    "friday": "Friday",
+    "saturday": "Saturday",
+    "sunday": "Sunday"
+  },
   "states": {
     "waiting_measurement": "waiting_for_measurement_value",
-    "waiting_notes": "waiting_for_notes"
+    "waiting_notes": "waiting_for_notes",
+    "waiting_notification_time": "waiting_for_notification_time"
   }
 }

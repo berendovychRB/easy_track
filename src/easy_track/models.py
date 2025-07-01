@@ -1,7 +1,6 @@
-from datetime import datetime
+from datetime import datetime, time
 from typing import List, Optional
 from sqlalchemy import (
-    Column,
     Integer,
     BigInteger,
     String,
@@ -10,6 +9,7 @@ from sqlalchemy import (
     ForeignKey,
     Boolean,
     Text,
+    Time,
     UniqueConstraint,
 )
 from sqlalchemy.orm import declarative_base
@@ -44,6 +44,9 @@ class User(Base):
     )
     measurements: Mapped[List["Measurement"]] = relationship(
         "Measurement", back_populates="user", cascade="all, delete-orphan"
+    )
+    notification_schedules: Mapped[List["NotificationSchedule"]] = relationship(
+        "NotificationSchedule", back_populates="user", cascade="all, delete-orphan"
     )
 
 
@@ -149,3 +152,39 @@ class Measurement(Base):
     measurement_type: Mapped["MeasurementType"] = relationship(
         "MeasurementType", back_populates="measurements"
     )
+
+
+class NotificationSchedule(Base):
+    __tablename__ = "notification_schedules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
+    day_of_week: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True  # 0=Monday, 1=Tuesday, ..., 6=Sunday, None=Daily
+    )
+    notification_time: Mapped[time] = mapped_column(Time, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    timezone: Mapped[str] = mapped_column(
+        String(50), default="UTC", nullable=False
+    )  # Store user's timezone
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    # Unique constraint to prevent duplicate schedules for same user
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "day_of_week",
+            "notification_time",
+            name="uq_user_notification_schedule",
+        ),
+    )
+
+    # Relationships
+    user: Mapped["User"] = relationship("User", back_populates="notification_schedules")

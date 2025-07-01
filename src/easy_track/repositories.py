@@ -1,10 +1,16 @@
 import logging
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta, time
 from typing import List, Optional, Dict
 from sqlalchemy import select, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from .models import User, MeasurementType, UserMeasurementType, Measurement
+from .models import (
+    User,
+    MeasurementType,
+    UserMeasurementType,
+    Measurement,
+    NotificationSchedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -478,3 +484,146 @@ class MeasurementRepository:
         except Exception as e:
             logger.error(f"Error fetching measurements by date for user {user_id}: {e}")
             raise
+
+
+class NotificationScheduleRepository:
+    """Repository for NotificationSchedule operations."""
+
+    @staticmethod
+    async def create_schedule(
+        session: AsyncSession,
+        user_id: int,
+        day_of_week: Optional[int],
+        notification_time: time,
+        timezone: str = "UTC",
+    ) -> NotificationSchedule:
+        """Create a new notification schedule."""
+        schedule = NotificationSchedule(
+            user_id=user_id,
+            day_of_week=day_of_week,
+            notification_time=notification_time,
+            timezone=timezone,
+        )
+        session.add(schedule)
+        await session.flush()
+        return schedule
+
+    @staticmethod
+    async def get_user_schedules(
+        session: AsyncSession, user_id: int
+    ) -> List[NotificationSchedule]:
+        """Get all notification schedules for a user."""
+        result = await session.execute(
+            select(NotificationSchedule)
+            .where(NotificationSchedule.user_id == user_id)
+            .order_by(NotificationSchedule.created_at)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_active_user_schedules(
+        session: AsyncSession, user_id: int
+    ) -> List[NotificationSchedule]:
+        """Get active notification schedules for a user."""
+        result = await session.execute(
+            select(NotificationSchedule)
+            .where(
+                NotificationSchedule.user_id == user_id,
+                NotificationSchedule.is_active.is_(True),
+            )
+            .order_by(NotificationSchedule.created_at)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_schedule_by_id(
+        session: AsyncSession, schedule_id: int
+    ) -> Optional[NotificationSchedule]:
+        """Get notification schedule by ID."""
+        result = await session.execute(
+            select(NotificationSchedule).where(NotificationSchedule.id == schedule_id)
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def update_schedule_status(
+        session: AsyncSession, schedule_id: int, is_active: bool
+    ) -> bool:
+        """Update notification schedule active status."""
+        schedule = await NotificationScheduleRepository.get_schedule_by_id(
+            session, schedule_id
+        )
+        if schedule:
+            schedule.is_active = is_active
+            await session.flush()
+            return True
+        return False
+
+    @staticmethod
+    async def delete_schedule(session: AsyncSession, schedule_id: int) -> bool:
+        """Delete notification schedule."""
+        schedule = await NotificationScheduleRepository.get_schedule_by_id(
+            session, schedule_id
+        )
+        if schedule:
+            await session.delete(schedule)
+            await session.flush()
+            return True
+        return False
+
+    @staticmethod
+    async def get_all_active_schedules(
+        session: AsyncSession,
+    ) -> List[NotificationSchedule]:
+        """Get all active notification schedules for the scheduler."""
+        result = await session.execute(
+            select(NotificationSchedule)
+            .options(selectinload(NotificationSchedule.user))
+            .where(NotificationSchedule.is_active.is_(True))
+            .order_by(NotificationSchedule.notification_time)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_schedules_for_time(
+        session: AsyncSession,
+        current_time: time,
+        current_day_of_week: int,
+    ) -> List[NotificationSchedule]:
+        """Get schedules that should trigger at the given time and day."""
+        result = await session.execute(
+            select(NotificationSchedule)
+            .options(selectinload(NotificationSchedule.user))
+            .where(
+                NotificationSchedule.is_active.is_(True),
+                NotificationSchedule.notification_time == current_time,
+                (
+                    (NotificationSchedule.day_of_week == current_day_of_week) |
+                    (NotificationSchedule.day_of_week.is_(None))
+                )
+            )
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def get_schedules_for_time_and_timezone(
+        session: AsyncSession,
+        current_time: time,
+        current_day_of_week: int,
+        timezone: str,
+    ) -> List[NotificationSchedule]:
+        """Get schedules for specific time, day, and timezone."""
+        result = await session.execute(
+            select(NotificationSchedule)
+            .options(selectinload(NotificationSchedule.user))
+            .where(
+                NotificationSchedule.is_active.is_(True),
+                NotificationSchedule.notification_time == current_time,
+                NotificationSchedule.timezone == timezone,
+                (
+                    (NotificationSchedule.day_of_week == current_day_of_week) |
+                    (NotificationSchedule.day_of_week.is_(None))
+                )
+            )
+        )
+        return result.scalars().all()

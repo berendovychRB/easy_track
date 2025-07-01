@@ -6,8 +6,10 @@ A powerful and scalable Telegram bot for athletes to track their body measuremen
 
 - 📊 **Flexible Measurement Tracking**: Users can choose which measurement types to track individually
 - 📈 **Progress Monitoring**: View your improvement over time with detailed statistics
+- 🔔 **Smart Notifications**: Customizable periodic reminders for measurement tracking
 - 🔄 **Dynamic Configuration**: Add/remove measurement types without affecting existing data
 - 📱 **User-Friendly Interface**: Intuitive inline keyboard navigation
+- 🌍 **Multilingual Support**: Full English and Ukrainian language support
 - 🚀 **High Performance**: Built with async/await for handling multiple users concurrently
 - 🐳 **Docker Ready**: Complete containerization with PostgreSQL
 - 🔒 **Production Ready**: Proper error handling, logging, and health checks
@@ -25,6 +27,15 @@ A powerful and scalable Telegram bot for athletes to track their body measuremen
 - Muscle Mass (kg)
 
 *New measurement types can be easily added through the database.*
+
+### 🔔 Notification System
+
+- **Flexible Scheduling**: Daily or weekly reminders at your preferred time
+- **Custom Time Selection**: 24-hour format time input (e.g., 09:00, 14:30, 21:00)
+- **Multiple Schedules**: Set up different reminders for different days
+- **Easy Management**: Enable/disable or delete notification schedules
+- **Smart Reminders**: Motivational messages to encourage consistent tracking
+- **Multilingual**: Notifications in English and Ukrainian
 
 ## 🛠 Tech Stack
 

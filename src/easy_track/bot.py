@@ -1,8 +1,9 @@
 import os
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, time
 from typing import Optional
+import re
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command, StateFilter
@@ -24,8 +25,10 @@ from .repositories import (
     MeasurementTypeRepository,
     UserMeasurementTypeRepository,
     MeasurementRepository,
+    NotificationScheduleRepository,
 )
 from .i18n import translator
+from .scheduler import set_scheduler, get_scheduler
 
 # Load environment variables
 load_dotenv()
@@ -54,6 +57,7 @@ class UserStates(StatesGroup):
     creating_custom_type_name = State()
     creating_custom_type_unit = State()
     creating_custom_type_description = State()
+    waiting_for_notification_time = State()
 
 
 class BotHandlers:
@@ -151,6 +155,10 @@ class BotHandlers:
             InlineKeyboardButton(
                 text=translator.get("buttons.statistics", user_lang),
                 callback_data="statistics",
+            ),
+            InlineKeyboardButton(
+                text=translator.get("buttons.notifications", user_lang),
+                callback_data="notifications",
             ),
             InlineKeyboardButton(
                 text=translator.get("buttons.language_settings", user_lang),
@@ -649,6 +657,7 @@ class BotHandlers:
         try:
             measurement_type_id = int(callback.data.split("_")[2])
             user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
 
             async def _add_type(session):
                 await UserMeasurementTypeRepository.add_measurement_type_to_user(
@@ -934,8 +943,8 @@ class BotHandlers:
             try:
                 user_id = await BotHandlers.get_or_create_user(message.from_user)
                 user_lang = await BotHandlers.get_user_language(user_id)
-            except:
-                pass
+            except Exception:
+                user_lang = "en"  # fallback language
             await message.reply(translator.get("custom_types.error", user_lang))
             await state.clear()
 
@@ -944,6 +953,7 @@ class BotHandlers:
         """Handle removing measurement types from user."""
         try:
             user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
 
             async def _get_user_types(session):
                 return await UserMeasurementTypeRepository.get_user_measurement_types(
@@ -996,21 +1006,21 @@ class BotHandlers:
         try:
             measurement_type_id = int(callback.data.split("_")[2])
             user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
 
             async def _remove_type(session):
                 success = await UserMeasurementTypeRepository.remove_measurement_type_from_user(
                     session, user_id, measurement_type_id
                 )
-                measurement_type = await MeasurementTypeRepository.get_type_by_id(
-                    session, measurement_type_id
-                )
-                return success, measurement_type
+                if success:
+                    return await MeasurementTypeRepository.get_type_by_id(
+                        session, measurement_type_id
+                    )
+                return None
 
-            success, measurement_type = await DatabaseManager.execute_with_session(
-                _remove_type
-            )
+            measurement_type = await DatabaseManager.execute_with_session(_remove_type)
 
-            if success:
+            if measurement_type:
                 translated_name = translator.get_measurement_type_name(
                     measurement_type.name, user_lang
                 )
@@ -1316,6 +1326,10 @@ class BotHandlers:
                     callback_data="statistics",
                 ),
                 InlineKeyboardButton(
+                    text=translator.get("buttons.notifications", user_lang),
+                    callback_data="notifications",
+                ),
+                InlineKeyboardButton(
                     text=translator.get("buttons.language_settings", user_lang),
                     callback_data="language_settings",
                 ),
@@ -1520,6 +1534,788 @@ class BotHandlers:
             )
             await callback.answer(translator.get("common.error", user_lang))
 
+    @staticmethod
+    async def handle_notifications(callback: CallbackQuery):
+        """Handle notifications menu."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            async def _get_schedules(session):
+                return await NotificationScheduleRepository.get_user_schedules(
+                    session, user_id
+                )
+
+            schedules = await DatabaseManager.execute_with_session(_get_schedules)
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("notifications.add_notification", user_lang),
+                    callback_data="add_notification",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get(
+                        "notifications.manage_notifications", user_lang
+                    ),
+                    callback_data="manage_notifications",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_menu", user_lang),
+                    callback_data="back_to_menu",
+                ),
+            )
+            keyboard.adjust(1)
+
+            if schedules:
+                schedules_text = (
+                    f"\n\n{translator.get('notifications.list_title', user_lang)}\n"
+                )
+                for schedule in schedules:
+                    if schedule.day_of_week is None:
+                        freq = translator.get(
+                            "notifications.list_item_daily",
+                            user_lang,
+                            time=schedule.notification_time.strftime("%H:%M"),
+                        )
+                    else:
+                        day_name = translator.get(
+                            f"days.{['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][schedule.day_of_week]}",
+                            user_lang,
+                        )
+                        freq = translator.get(
+                            "notifications.list_item_weekly",
+                            user_lang,
+                            day=day_name,
+                            time=schedule.notification_time.strftime("%H:%M"),
+                        )
+
+                    status = translator.get(
+                        (
+                            "notifications.list_status_active"
+                            if schedule.is_active
+                            else "notifications.list_status_inactive"
+                        ),
+                        user_lang,
+                    )
+                    schedules_text += f"• {freq} - {status}\n"
+
+                message_text = (
+                    translator.get("notifications.menu_title", user_lang)
+                    + "\n"
+                    + translator.get("notifications.menu_description", user_lang)
+                    + schedules_text
+                )
+            else:
+                message_text = (
+                    translator.get("notifications.menu_title", user_lang)
+                    + "\n"
+                    + translator.get("notifications.menu_description", user_lang)
+                    + "\n\n"
+                    + translator.get("notifications.no_notifications", user_lang)
+                )
+
+            await callback.message.edit_text(
+                message_text, reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_notifications: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_add_notification(callback: CallbackQuery):
+        """Handle add notification selection."""
+        try:
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.daily", user_lang),
+                    callback_data="notification_freq_daily",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.monday", user_lang),
+                    callback_data="notification_freq_0",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.tuesday", user_lang),
+                    callback_data="notification_freq_1",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.wednesday", user_lang),
+                    callback_data="notification_freq_2",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.thursday", user_lang),
+                    callback_data="notification_freq_3",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.friday", user_lang),
+                    callback_data="notification_freq_4",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.saturday", user_lang),
+                    callback_data="notification_freq_5",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.sunday", user_lang),
+                    callback_data="notification_freq_6",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back", user_lang),
+                    callback_data="notifications",
+                ),
+            )
+            keyboard.adjust(1, 2, 2, 2, 1, 1)
+
+            await callback.message.edit_text(
+                translator.get("notifications.select_frequency", user_lang),
+                reply_markup=keyboard.as_markup(),
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_add_notification: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_notification_frequency(callback: CallbackQuery, state: FSMContext):
+        """Handle notification frequency selection."""
+        try:
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+
+            # Extract frequency from callback data
+            freq_data = callback.data.split("_")[
+                -1
+            ]  # notification_freq_daily or notification_freq_0
+
+            if freq_data == "daily":
+                day_of_week = None
+            else:
+                day_of_week = int(freq_data)
+
+            # Store the frequency in state
+            await state.update_data(day_of_week=day_of_week)
+            await state.set_state(UserStates.waiting_for_notification_time)
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.cancel", user_lang),
+                    callback_data="notifications",
+                ),
+            )
+
+            await callback.message.edit_text(
+                translator.get("notifications.select_time", user_lang),
+                reply_markup=keyboard.as_markup(),
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_notification_frequency: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_notification_time(message: types.Message, state: FSMContext):
+        """Handle notification time input."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Validate time format
+            time_pattern = re.compile(r"^([0-1][0-9]|2[0-3]):([0-5][0-9])$")
+            if not time_pattern.match(message.text):
+                await message.answer(
+                    translator.get("notifications.invalid_time", user_lang)
+                )
+                return
+
+            # Parse time
+            hour, minute = map(int, message.text.split(":"))
+            notification_time = time(hour, minute)
+
+            # Get stored frequency data
+            data = await state.get_data()
+            day_of_week = data.get("day_of_week")
+
+            # Get user's timezone from Telegram (if available) or use UTC
+            user_timezone = "UTC"
+            if message.from_user.language_code:
+                # Try to map language code to timezone - this is a simple mapping
+                timezone_mapping = {
+                    "uk": "Europe/Kiev",
+                    "ru": "Europe/Moscow",
+                    "en": "UTC",
+                    "de": "Europe/Berlin",
+                    "fr": "Europe/Paris",
+                    "es": "Europe/Madrid",
+                    "it": "Europe/Rome"
+                }
+                user_timezone = timezone_mapping.get(message.from_user.language_code, "UTC")
+
+            async def _create_schedule(session):
+                # Check if schedule already exists
+                schedules = await NotificationScheduleRepository.get_user_schedules(
+                    session, user_id
+                )
+                for schedule in schedules:
+                    if (
+                        schedule.day_of_week == day_of_week
+                        and schedule.notification_time == notification_time
+                    ):
+                        return None  # Schedule exists
+
+                # Create new schedule with timezone
+                return await NotificationScheduleRepository.create_schedule(
+                    session, user_id, day_of_week, notification_time, user_timezone
+                )
+
+            result = await DatabaseManager.execute_with_session(_create_schedule)
+
+            await state.clear()
+
+            if result is None:
+                await message.answer(
+                    translator.get("notifications.schedule_exists", user_lang)
+                )
+            else:
+                if day_of_week is None:
+                    frequency = translator.get(
+                        "notifications.frequency_daily", user_lang
+                    )
+                else:
+                    day_name = translator.get(
+                        f"days.{['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][day_of_week]}",
+                        user_lang,
+                    )
+                    frequency = translator.get(
+                        "notifications.frequency_weekly", user_lang, day=day_name
+                    )
+
+                success_message = translator.get(
+                    "notifications.success_created",
+                    user_lang,
+                    frequency=frequency,
+                    time=message.text,
+                )
+                await message.answer(success_message)
+
+            # Show notifications menu
+            await BotHandlers.show_notifications_menu(message, user_id, user_lang)
+
+        except Exception as e:
+            logger.error(f"Error in handle_notification_time: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                message.from_user.id
+            )
+            await message.answer(translator.get("notifications.error", user_lang))
+            await state.clear()
+
+    @staticmethod
+    async def handle_manage_notifications(callback: CallbackQuery):
+        """Handle manage notifications selection."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            async def _get_schedules(session):
+                return await NotificationScheduleRepository.get_user_schedules(
+                    session, user_id
+                )
+
+            schedules = await DatabaseManager.execute_with_session(_get_schedules)
+
+            if not schedules:
+                await callback.message.edit_text(
+                    translator.get("notifications.no_notifications", user_lang),
+                    reply_markup=InlineKeyboardMarkup(
+                        inline_keyboard=[
+                            [
+                                InlineKeyboardButton(
+                                    text=translator.get("buttons.back", user_lang),
+                                    callback_data="notifications",
+                                )
+                            ]
+                        ]
+                    ),
+                )
+                return
+
+            keyboard = InlineKeyboardBuilder()
+            for schedule in schedules:
+                if schedule.day_of_week is None:
+                    freq_text = translator.get(
+                        "notifications.list_item_daily",
+                        user_lang,
+                        time=schedule.notification_time.strftime("%H:%M"),
+                    )
+                else:
+                    day_names = [
+                        "monday",
+                        "tuesday",
+                        "wednesday",
+                        "thursday",
+                        "friday",
+                        "saturday",
+                        "sunday",
+                    ]
+                    day_name = translator.get(
+                        f"days.{day_names[schedule.day_of_week]}", user_lang
+                    )
+                    freq_text = translator.get(
+                        "notifications.list_item_weekly",
+                        user_lang,
+                        day=day_name,
+                        time=schedule.notification_time.strftime("%H:%M"),
+                    )
+
+                status = "✅" if schedule.is_active else "❌"
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=f"{freq_text} {status}",
+                        callback_data=f"manage_notification_{schedule.id}",
+                    )
+                )
+
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back", user_lang),
+                    callback_data="notifications",
+                )
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                translator.get("notifications.select_to_manage", user_lang),
+                reply_markup=keyboard.as_markup(),
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_manage_notifications: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_manage_notification_detail(callback: CallbackQuery):
+        """Handle individual notification management."""
+        try:
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+
+            schedule_id = int(callback.data.split("_")[-1])
+
+            async def _get_schedule(session):
+                return await NotificationScheduleRepository.get_schedule_by_id(
+                    session, schedule_id
+                )
+
+            schedule = await DatabaseManager.execute_with_session(_get_schedule)
+
+            if not schedule:
+                await callback.answer(translator.get("common.error", user_lang))
+                return
+
+            if schedule.day_of_week is None:
+                frequency = translator.get("notifications.frequency_daily", user_lang)
+            else:
+                day_name = translator.get(
+                    f"days.{['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][schedule.day_of_week]}",
+                    user_lang,
+                )
+                frequency = translator.get(
+                    "notifications.frequency_weekly", user_lang, day=day_name
+                )
+
+            status = translator.get(
+                (
+                    "notifications.list_status_active"
+                    if schedule.is_active
+                    else "notifications.list_status_inactive"
+                ),
+                user_lang,
+            )
+
+            keyboard = InlineKeyboardBuilder()
+            if schedule.is_active:
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=translator.get("buttons.disable", user_lang),
+                        callback_data=f"toggle_notification_{schedule_id}",
+                    )
+                )
+            else:
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=translator.get("buttons.enable", user_lang),
+                        callback_data=f"toggle_notification_{schedule_id}",
+                    )
+                )
+
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.delete", user_lang),
+                    callback_data=f"delete_notification_{schedule_id}",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back", user_lang),
+                    callback_data="manage_notifications",
+                ),
+            )
+            keyboard.adjust(1, 2)
+
+            message_text = (
+                f"{translator.get('notifications.manage_title', user_lang)}\n\n"
+                f"{translator.get('notifications.manage_schedule', user_lang, frequency=frequency, time=schedule.notification_time.strftime('%H:%M'))}\n"
+                f"{translator.get('notifications.manage_status', user_lang, status=status)}"
+            )
+
+            await callback.message.edit_text(
+                message_text, reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_manage_notification_detail: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_toggle_notification(callback: CallbackQuery):
+        """Handle notification toggle (enable/disable)."""
+        try:
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+
+            schedule_id = int(callback.data.split("_")[-1])
+
+            async def _toggle_schedule(session):
+                schedule = await NotificationScheduleRepository.get_schedule_by_id(
+                    session, schedule_id
+                )
+                if schedule:
+                    schedule.is_active = not schedule.is_active
+                    await session.flush()
+                    return schedule
+                return None
+
+            schedule = await DatabaseManager.execute_with_session(_toggle_schedule)
+
+            if schedule:
+                await callback.answer(
+                    translator.get("notifications.success_updated", user_lang)
+                )
+                # Refresh the detail view
+                callback.data = f"manage_notification_{schedule_id}"
+                await BotHandlers.handle_manage_notification_detail(callback)
+            else:
+                await callback.answer(translator.get("notifications.error", user_lang))
+
+        except Exception as e:
+            logger.error(f"Error in handle_toggle_notification: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_delete_notification(callback: CallbackQuery):
+        """Handle notification deletion confirmation."""
+        try:
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+
+            schedule_id = int(callback.data.split("_")[-1])
+
+            async def _get_schedule(session):
+                return await NotificationScheduleRepository.get_schedule_by_id(
+                    session, schedule_id
+                )
+
+            schedule = await DatabaseManager.execute_with_session(_get_schedule)
+
+            if not schedule:
+                await callback.answer(translator.get("common.error", user_lang))
+                return
+
+            if schedule.day_of_week is None:
+                frequency = translator.get("notifications.frequency_daily", user_lang)
+            else:
+                day_name = translator.get(
+                    f"days.{['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'][schedule.day_of_week]}",
+                    user_lang,
+                )
+                frequency = translator.get(
+                    "notifications.frequency_weekly", user_lang, day=day_name
+                )
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.yes", user_lang),
+                    callback_data=f"confirm_delete_notification_{schedule_id}",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.no", user_lang),
+                    callback_data=f"manage_notification_{schedule_id}",
+                ),
+            )
+            keyboard.adjust(2)
+
+            confirm_text = translator.get(
+                "notifications.confirm_delete",
+                user_lang,
+                frequency=frequency,
+                time=schedule.notification_time.strftime("%H:%M"),
+            )
+
+            await callback.message.edit_text(
+                confirm_text, reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in handle_delete_notification: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def handle_confirm_delete_notification(callback: CallbackQuery):
+        """Handle confirmed notification deletion."""
+        try:
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+
+            schedule_id = int(callback.data.split("_")[-1])
+
+            async def _delete_schedule(session):
+                return await NotificationScheduleRepository.delete_schedule(
+                    session, schedule_id
+                )
+
+            success = await DatabaseManager.execute_with_session(_delete_schedule)
+
+            if success:
+                await callback.answer(
+                    translator.get("notifications.success_deleted", user_lang)
+                )
+                # Go back to main notifications menu
+                await BotHandlers._show_notifications_menu_callback(callback, user_lang)
+            else:
+                await callback.answer(translator.get("notifications.error", user_lang))
+
+        except Exception as e:
+            logger.error(f"Error in handle_confirm_delete_notification: {e}")
+            user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                callback.from_user.id
+            )
+            await callback.answer(translator.get("common.error", user_lang))
+
+    @staticmethod
+    async def show_notifications_menu(message, user_id: int, user_lang: str):
+        """Helper method to show notifications menu."""
+
+        async def _get_schedules(session):
+            return await NotificationScheduleRepository.get_user_schedules(
+                session, user_id
+            )
+
+        schedules = await DatabaseManager.execute_with_session(_get_schedules)
+
+        keyboard = InlineKeyboardBuilder()
+        keyboard.add(
+            InlineKeyboardButton(
+                text=translator.get("notifications.add_notification", user_lang),
+                callback_data="add_notification",
+            ),
+            InlineKeyboardButton(
+                text=translator.get("notifications.manage_notifications", user_lang),
+                callback_data="manage_notifications",
+            ),
+            InlineKeyboardButton(
+                text=translator.get("buttons.back_to_menu", user_lang),
+                callback_data="back_to_menu",
+            ),
+        )
+        keyboard.adjust(1)
+
+        if schedules:
+            schedules_text = (
+                f"\n\n{translator.get('notifications.list_title', user_lang)}\n"
+            )
+            for schedule in schedules:
+                if schedule.day_of_week is None:
+                    freq = translator.get(
+                        "notifications.list_item_daily",
+                        user_lang,
+                        time=schedule.notification_time.strftime("%H:%M"),
+                    )
+                else:
+                    day_names = [
+                        "monday",
+                        "tuesday",
+                        "wednesday",
+                        "thursday",
+                        "friday",
+                        "saturday",
+                        "sunday",
+                    ]
+                    day_name = translator.get(
+                        f"days.{day_names[schedule.day_of_week]}", user_lang
+                    )
+                    freq = translator.get(
+                        "notifications.list_item_weekly",
+                        user_lang,
+                        day=day_name,
+                        time=schedule.notification_time.strftime("%H:%M"),
+                    )
+
+                status = translator.get(
+                    (
+                        "notifications.list_status_active"
+                        if schedule.is_active
+                        else "notifications.list_status_inactive"
+                    ),
+                    user_lang,
+                )
+                schedules_text += f"• {freq} - {status}\n"
+
+            message_text = (
+                translator.get("notifications.menu_title", user_lang)
+                + "\n"
+                + translator.get("notifications.menu_description", user_lang)
+                + schedules_text
+            )
+        else:
+            message_text = (
+                translator.get("notifications.menu_title", user_lang)
+                + "\n"
+                + translator.get("notifications.menu_description", user_lang)
+                + "\n\n"
+                + translator.get("notifications.no_notifications", user_lang)
+            )
+
+        await message.answer(message_text, reply_markup=keyboard.as_markup())
+
+    @staticmethod
+    async def _show_notifications_menu_callback(
+        callback: CallbackQuery, user_lang: str
+    ):
+        """Helper method to show notifications menu for callbacks."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+
+            async def _get_schedules(session):
+                return await NotificationScheduleRepository.get_user_schedules(
+                    session, user_id
+                )
+
+            schedules = await DatabaseManager.execute_with_session(_get_schedules)
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("notifications.add_notification", user_lang),
+                    callback_data="add_notification",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get(
+                        "notifications.manage_notifications", user_lang
+                    ),
+                    callback_data="manage_notifications",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_menu", user_lang),
+                    callback_data="back_to_menu",
+                ),
+            )
+            keyboard.adjust(1)
+
+            if schedules:
+                schedules_text = (
+                    f"\n\n{translator.get('notifications.list_title', user_lang)}\n"
+                )
+                for schedule in schedules:
+                    if schedule.day_of_week is None:
+                        freq = translator.get(
+                            "notifications.list_item_daily",
+                            user_lang,
+                            time=schedule.notification_time.strftime("%H:%M"),
+                        )
+                    else:
+                        day_names = [
+                            "monday",
+                            "tuesday",
+                            "wednesday",
+                            "thursday",
+                            "friday",
+                            "saturday",
+                            "sunday",
+                        ]
+                        day_name = translator.get(
+                            f"days.{day_names[schedule.day_of_week]}", user_lang
+                        )
+                        freq = translator.get(
+                            "notifications.list_item_weekly",
+                            user_lang,
+                            day=day_name,
+                            time=schedule.notification_time.strftime("%H:%M"),
+                        )
+
+                    status = translator.get(
+                        (
+                            "notifications.list_status_active"
+                            if schedule.is_active
+                            else "notifications.list_status_inactive"
+                        ),
+                        user_lang,
+                    )
+                    schedules_text += f"• {freq} - {status}\n"
+
+                message_text = (
+                    translator.get("notifications.menu_title", user_lang)
+                    + "\n"
+                    + translator.get("notifications.menu_description", user_lang)
+                    + schedules_text
+                )
+            else:
+                message_text = (
+                    translator.get("notifications.menu_title", user_lang)
+                    + "\n"
+                    + translator.get("notifications.menu_description", user_lang)
+                    + "\n\n"
+                    + translator.get("notifications.no_notifications", user_lang)
+                )
+
+            await callback.message.edit_text(
+                message_text, reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error in _show_notifications_menu_callback: {e}")
+            await callback.answer(translator.get("notifications.error", user_lang))
+
 
 # Register handlers
 dp.message.register(BotHandlers.start_command, Command("start"))
@@ -1539,6 +2335,10 @@ dp.message.register(
 dp.message.register(
     BotHandlers.handle_custom_type_description,
     StateFilter(UserStates.creating_custom_type_description),
+)
+dp.message.register(
+    BotHandlers.handle_notification_time,
+    StateFilter(UserStates.waiting_for_notification_time),
 )
 
 # Callback handlers
@@ -1579,6 +2379,32 @@ dp.callback_query.register(
     BotHandlers.handle_set_language, F.data.startswith("set_language_")
 )
 dp.callback_query.register(BotHandlers.handle_back_to_menu, F.data == "back_to_menu")
+
+# Notification handlers
+dp.callback_query.register(BotHandlers.handle_notifications, F.data == "notifications")
+dp.callback_query.register(
+    BotHandlers.handle_add_notification, F.data == "add_notification"
+)
+dp.callback_query.register(
+    BotHandlers.handle_notification_frequency, F.data.startswith("notification_freq_")
+)
+dp.callback_query.register(
+    BotHandlers.handle_manage_notifications, F.data == "manage_notifications"
+)
+dp.callback_query.register(
+    BotHandlers.handle_manage_notification_detail,
+    F.data.startswith("manage_notification_"),
+)
+dp.callback_query.register(
+    BotHandlers.handle_toggle_notification, F.data.startswith("toggle_notification_")
+)
+dp.callback_query.register(
+    BotHandlers.handle_delete_notification, F.data.startswith("delete_notification_")
+)
+dp.callback_query.register(
+    BotHandlers.handle_confirm_delete_notification,
+    F.data.startswith("confirm_delete_notification_"),
+)
 
 
 async def init_measurement_types():
@@ -1627,6 +2453,11 @@ async def main():
         await init_measurement_types()
         logger.info("Default measurement types initialized")
 
+        # Initialize and start notification scheduler
+        scheduler = set_scheduler(bot)
+        await scheduler.start()
+        logger.info("Notification scheduler started")
+
         # Start bot
         logger.info("Bot is starting...")
         await dp.start_polling(bot)
@@ -1634,6 +2465,12 @@ async def main():
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
     finally:
+        # Stop scheduler
+        scheduler = get_scheduler()
+        if scheduler:
+            await scheduler.stop()
+            logger.info("Notification scheduler stopped")
+
         await close_db()
         logger.info("Bot stopped")
 
