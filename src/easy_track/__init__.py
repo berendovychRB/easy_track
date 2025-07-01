@@ -25,21 +25,23 @@ from .repositories import (
     UserRepository,
     MeasurementTypeRepository,
     UserMeasurementTypeRepository,
-    MeasurementRepository
+    MeasurementRepository,
 )
 
 # Make key components available at package level
-__all__.extend([
-    "Base",
-    "User",
-    "MeasurementType",
-    "UserMeasurementType",
-    "Measurement",
-    "DatabaseManager",
-    "init_db",
-    "close_db",
-    "UserRepository",
-    "MeasurementTypeRepository",
-    "UserMeasurementTypeRepository",
-    "MeasurementRepository",
-])
+__all__.extend(
+    [
+        "Base",
+        "User",
+        "MeasurementType",
+        "UserMeasurementType",
+        "Measurement",
+        "DatabaseManager",
+        "init_db",
+        "close_db",
+        "UserRepository",
+        "MeasurementTypeRepository",
+        "UserMeasurementTypeRepository",
+        "MeasurementRepository",
+    ]
+)

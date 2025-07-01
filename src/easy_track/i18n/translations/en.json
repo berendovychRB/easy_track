@@ -1,0 +1,132 @@
+{
+  "commands": {
+    "start": {
+      "welcome": "👋 Welcome to EasyTrack, {name}!\n\n📊 Track your body measurements easily:\n• Choose which measurements to track\n• Log your progress regularly\n• View your improvement over time\n\nUse /menu to see all available options.",
+      "error": "❌ Sorry, something went wrong. Please try again."
+    },
+    "menu": {
+      "title": "🏠 Main Menu - Choose an option:"
+    }
+  },
+  "buttons": {
+    "add_measurement": "📝 Add Measurement",
+    "manage_types": "⚙️ Manage Types",
+    "view_progress": "📊 View Progress",
+    "view_by_date": "📅 View by Date",
+    "statistics": "📈 Statistics",
+    "language_settings": "🌐 Language",
+    "back_to_menu": "🔙 Back to Menu",
+    "back": "◀️ Back",
+    "cancel": "❌ Cancel",
+    "confirm": "✅ Confirm",
+    "add": "➕ Add",
+    "remove": "➖ Remove",
+    "yes": "✅ Yes",
+    "no": "❌ No",
+    "english": "🇺🇸 English",
+    "ukrainian": "🇺🇦 Українська"
+  },
+  "language": {
+    "select": "🌐 Select your language:",
+    "changed": "✅ Language changed successfully!",
+    "current": "Current language: {language}"
+  },
+  "add_measurement": {
+    "select_type": "📝 Select measurement type:",
+    "no_types": "❌ You haven't added any measurement types yet.\n\nUse \"⚙️ Manage Types\" to add measurement types first.",
+    "enter_value": "📊 Enter your {type} measurement:\n\n📈 Latest: {latest}\n📏 Unit: {unit}",
+    "enter_value_no_history": "📊 Enter your {type} measurement:\n\n📏 Unit: {unit}",
+    "invalid_number": "❌ Please enter a valid number.",
+    "success": "✅ Measurement saved successfully!\n\n📊 {type}: {value} {unit}\n📅 Date: {date}",
+    "error": "❌ Error saving measurement. Please try again."
+  },
+  "manage_types": {
+    "title": "⚙️ Manage Measurement Types:",
+    "description": "You can add or remove measurement types that you want to track.",
+    "add_types": "➕ Add Types",
+    "remove_types": "➖ Remove Types"
+  },
+  "add_types": {
+    "select": "➕ Select measurement types to add:",
+    "no_available": "ℹ️ All available measurement types are already added to your profile.",
+    "confirm": "Add the following measurement types?\n\n{types}",
+    "success": "✅ Measurement types added successfully!",
+    "error": "❌ Error adding measurement types. Please try again."
+  },
+  "remove_types": {
+    "select": "➖ Select measurement types to remove:",
+    "no_types": "ℹ️ You don't have any measurement types to remove.",
+    "confirm": "⚠️ Remove the following measurement types?\n\n{types}\n\n❗ This will also delete all related measurements!",
+    "success": "✅ Measurement types removed successfully!",
+    "error": "❌ Error removing measurement types. Please try again."
+  },
+  "view_progress": {
+    "select_type": "📊 Select measurement type to view progress:",
+    "no_types": "❌ You haven't added any measurement types yet.",
+    "no_measurements": "📊 No measurements found for {type}.\n\nAdd some measurements first to see your progress!",
+    "title": "📊 Progress for {type}",
+    "latest": "📈 Latest: {value} {unit} ({date})",
+    "total_count": "📝 Total measurements: {count}",
+    "first_measurement": "🎯 First: {value} {unit} ({date})",
+    "change": "📊 Change: {change} {unit}",
+    "improvement": "📈 Improvement: {change} {unit}",
+    "decline": "📉 Change: {change} {unit}",
+    "recent_measurements": "📋 Recent measurements:",
+    "measurement_item": "• {value} {unit} - {date}"
+  },
+  "statistics": {
+    "title": "📈 Your Statistics",
+    "total_types": "📊 Tracking {count} measurement types",
+    "total_measurements": "🎯 Total measurements: {count}",
+    "most_active": "🏆 Most tracked: {type} ({count} measurements)",
+    "recent_activity": "📅 Recent activity: {count} measurements this month",
+    "no_data": "📈 Statistics\n\n❌ No measurements recorded yet.\nStart tracking to see your progress!",
+    "overview": "📋 Overview:",
+    "latest_info": " (Latest: {value} {unit})"
+  },
+  "view_by_date": {
+    "select_period": "📅 Select time period:",
+    "last_7_days": "📅 Last 7 days",
+    "last_30_days": "📅 Last 30 days",
+    "last_90_days": "📅 Last 90 days",
+    "all_time": "📅 All time",
+    "custom_period": "📅 Custom period",
+    "no_measurements": "📅 No measurements found for the selected period.",
+    "measurements_for_period": "📅 Measurements for {period}:",
+    "measurement_entry": "📊 {type}: {value} {unit}\n📅 {date}\n💭 {notes}",
+    "measurement_entry_no_notes": "📊 {type}: {value} {unit}\n📅 {date}"
+  },
+  "measurement_types": {
+    "weight": "Weight",
+    "height": "Height",
+    "waist": "Waist",
+    "chest": "Chest",
+    "hips": "Hips",
+    "bicep": "Bicep",
+    "thigh": "Thigh",
+    "neck": "Neck",
+    "forearm": "Forearm",
+    "calf": "Calf",
+    "shoulders": "Shoulders",
+    "body_fat": "Body Fat %"
+  },
+  "units": {
+    "kg": "kg",
+    "cm": "cm",
+    "inches": "in",
+    "lbs": "lbs",
+    "percent": "%"
+  },
+  "common": {
+    "error": "❌ An error occurred. Please try again.",
+    "success": "✅ Operation completed successfully!",
+    "loading": "⏳ Loading...",
+    "no_data": "📊 No data available.",
+    "date_format": "{day}/{month}/{year}",
+    "datetime_format": "{day}/{month}/{year} {hour}:{minute}"
+  },
+  "states": {
+    "waiting_measurement": "waiting_for_measurement_value",
+    "waiting_notes": "waiting_for_notes"
+  }
+}
