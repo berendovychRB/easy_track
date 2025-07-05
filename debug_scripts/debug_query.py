@@ -4,7 +4,6 @@ Debug script to test the problematic SQLAlchemy query that's causing the boolean
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -12,15 +11,16 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from dotenv import load_dotenv
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 from sqlalchemy.orm import selectinload
 
-from easy_track.models import User, MeasurementType, UserMeasurementType, Measurement
 from easy_track.database import DatabaseManager, init_db
+from easy_track.models import MeasurementType, User, UserMeasurementType
 from easy_track.repositories import UserMeasurementTypeRepository
 
 # Load environment variables
 load_dotenv()
+
 
 async def debug_queries():
     """Debug the problematic queries step by step."""
@@ -85,7 +85,7 @@ async def debug_queries():
                     .where(
                         and_(
                             UserMeasurementType.user_id == user.id,
-                            UserMeasurementType.is_active == True
+                            UserMeasurementType.is_active == True,
                         )
                     )
                 )
@@ -105,13 +105,15 @@ async def debug_queries():
                         .where(
                             and_(
                                 UserMeasurementType.user_id == user.id,
-                                UserMeasurementType.is_active.is_(True)
+                                UserMeasurementType.is_active.is_(True),
                             )
                         )
                     )
                     result = await session.execute(query)
                     user_types = result.scalars().all()
-                    print(f"   ✅ Alternative query successful: {len(user_types)} results")
+                    print(
+                        f"   ✅ Alternative query successful: {len(user_types)} results"
+                    )
 
                 except Exception as e2:
                     print(f"   ❌ Alternative query also failed: {e2}")
@@ -126,7 +128,7 @@ async def debug_queries():
                     .where(
                         and_(
                             UserMeasurementType.user_id == user.id,
-                            UserMeasurementType.is_active.is_(True)
+                            UserMeasurementType.is_active.is_(True),
                         )
                     )
                     .order_by(MeasurementType.name)
@@ -136,7 +138,9 @@ async def debug_queries():
                 print(f"   ✅ JOIN query successful: {len(user_types)} results")
 
                 for ut in user_types:
-                    print(f"      - {ut.measurement_type.name} ({ut.measurement_type.unit})")
+                    print(
+                        f"      - {ut.measurement_type.name} ({ut.measurement_type.unit})"
+                    )
 
             except Exception as e:
                 print(f"   ❌ JOIN query failed: {e}")
@@ -144,8 +148,10 @@ async def debug_queries():
             # Test repository method
             print("7. Testing repository method...")
             try:
-                user_types = await UserMeasurementTypeRepository.get_user_measurement_types(
-                    session, user.id
+                user_types = (
+                    await UserMeasurementTypeRepository.get_user_measurement_types(
+                        session, user.id
+                    )
                 )
                 print(f"   ✅ Repository method successful: {len(user_types)} results")
 
@@ -157,7 +163,9 @@ async def debug_queries():
     except Exception as e:
         print(f"❌ Debug failed: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 async def create_test_data():
     """Create test data for debugging."""
@@ -169,21 +177,17 @@ async def create_test_data():
             telegram_id=123456789,
             username="testuser",
             first_name="Test",
-            last_name="User"
+            last_name="User",
         )
         session.add(user)
         await session.flush()
 
         # Create measurement types
         weight_type = MeasurementType(
-            name="Weight",
-            unit="kg",
-            description="Body weight"
+            name="Weight", unit="kg", description="Body weight"
         )
         waist_type = MeasurementType(
-            name="Waist",
-            unit="cm",
-            description="Waist circumference"
+            name="Waist", unit="cm", description="Waist circumference"
         )
 
         session.add(weight_type)
@@ -192,14 +196,10 @@ async def create_test_data():
 
         # Create user measurement types
         user_weight = UserMeasurementType(
-            user_id=user.id,
-            measurement_type_id=weight_type.id,
-            is_active=True
+            user_id=user.id, measurement_type_id=weight_type.id, is_active=True
         )
         user_waist = UserMeasurementType(
-            user_id=user.id,
-            measurement_type_id=waist_type.id,
-            is_active=True
+            user_id=user.id, measurement_type_id=waist_type.id, is_active=True
         )
 
         session.add(user_weight)
@@ -209,6 +209,7 @@ async def create_test_data():
         print(f"   Created user {user.telegram_id} with 2 measurement types")
 
     await DatabaseManager.execute_with_session(_create_data)
+
 
 async def test_raw_sql():
     """Test with raw SQL to isolate the issue."""
@@ -246,6 +247,7 @@ async def test_raw_sql():
 
     await DatabaseManager.execute_with_session(_test_raw)
 
+
 if __name__ == "__main__":
     print("🚀 SQLAlchemy Query Debugging Tool")
     print("=" * 40)
@@ -260,4 +262,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ Debugging failed: {e}")
         import traceback
+
         traceback.print_exc()

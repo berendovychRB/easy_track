@@ -3,14 +3,15 @@
 Setup script for EasyTrack - Telegram Bot for Body Measurement Tracking
 """
 
-from setuptools import setup, find_packages
 from pathlib import Path
+
+from setuptools import find_packages, setup
 
 # Read the README file
 this_directory = Path(__file__).parent
 readme_file = this_directory / "README.md"
 if readme_file.exists():
-    long_description = readme_file.read_text(encoding='utf-8')
+    long_description = readme_file.read_text(encoding="utf-8")
 else:
     long_description = "Telegram bot for tracking body measurements"
 
@@ -18,7 +19,11 @@ else:
 requirements = []
 requirements_file = this_directory / "requirements.txt"
 if requirements_file.exists():
-    requirements = [req.strip() for req in requirements_file.read_text().strip().split('\n') if req.strip() and not req.startswith('#')]
+    requirements = [
+        req.strip()
+        for req in requirements_file.read_text().strip().split("\n")
+        if req.strip() and not req.startswith("#")
+    ]
 
 # Package metadata
 setup(

@@ -1,34 +1,37 @@
-import os
 import asyncio
 import logging
-from datetime import datetime, time
-from typing import Optional
+import os
 import re
+from datetime import datetime, time
 
-from aiogram import Bot, Dispatcher, types, F
+from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import (
+    CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    CallbackQuery,
     Message,
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
 
-from .database import DatabaseManager, init_db, close_db
-from .repositories import (
-    UserRepository,
-    MeasurementTypeRepository,
-    UserMeasurementTypeRepository,
-    MeasurementRepository,
-    NotificationScheduleRepository,
-)
+from .coach_notification_repository import CoachNotificationRepository
+from .coach_repository import AthleteCoachRequestRepository, CoachAthleteRepository
+from .database import DatabaseManager, close_db, init_db
 from .i18n import translator
-from .scheduler import set_scheduler, get_scheduler
+from .models import CoachNotificationType, UserRole
+from .permissions import PermissionManager
+from .repositories import (
+    MeasurementRepository,
+    MeasurementTypeRepository,
+    NotificationScheduleRepository,
+    UserMeasurementTypeRepository,
+    UserRepository,
+)
+from .scheduler import get_scheduler, set_scheduler
 
 # Load environment variables
 load_dotenv()
@@ -58,10 +61,24 @@ class UserStates(StatesGroup):
     creating_custom_type_unit = State()
     creating_custom_type_description = State()
     waiting_for_notification_time = State()
+    # Coach states
+    waiting_for_athlete_username = State()
+    confirming_athlete_addition = State()
+    selecting_athlete_to_remove = State()
+    viewing_athlete_measurements = State()
+    # Coach request states
+    viewing_coach_requests = State()
+    responding_to_coach_request = State()
 
 
 class BotHandlers:
     """Main bot handlers class."""
+
+    @staticmethod
+    async def get_error_message(user_id: int) -> str:
+        """Get localized error message for user."""
+        user_lang = await BotHandlers.get_user_language(user_id)
+        return translator.get("common.error", user_lang)
 
     @staticmethod
     async def get_or_create_user(telegram_user: types.User) -> int:
@@ -160,6 +177,50 @@ class BotHandlers:
                 text=translator.get("buttons.notifications", user_lang),
                 callback_data="notifications",
             ),
+        )
+
+        # Check for pending coach requests
+        async def _get_pending_requests(session):
+            return await AthleteCoachRequestRepository.get_athlete_pending_requests(
+                session, user_id
+            )
+
+        pending_requests = await DatabaseManager.execute_with_session(
+            _get_pending_requests
+        )
+
+        if pending_requests:
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.coach_requests", user_lang)
+                    + f" ({len(pending_requests)})",
+                    callback_data="coach_requests",
+                ),
+            )
+
+        # Add coach options if user is a coach
+        async def _check_coach_role(session):
+            return await UserRepository.is_user_coach(session, user_id)
+
+        is_coach = await DatabaseManager.execute_with_session(_check_coach_role)
+
+        if is_coach:
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.coach_panel", user_lang),
+                    callback_data="coach_panel",
+                ),
+            )
+        else:
+            # Add "Become Coach" button for regular users
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.become_coach", user_lang),
+                    callback_data="become_coach_callback",
+                ),
+            )
+
+        keyboard.add(
             InlineKeyboardButton(
                 text=translator.get("buttons.language_settings", user_lang),
                 callback_data="language_settings",
@@ -176,6 +237,201 @@ class BotHandlers:
     async def menu_command(message: types.Message):
         """Handle /menu command."""
         await BotHandlers.show_main_menu(message)
+
+    # Coach Command Handlers
+    @staticmethod
+    async def add_athlete_command(message: types.Message, state: FSMContext):
+        """Handle /add_athlete command."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is a coach
+            async def _check_coach_permission(session):
+                return await PermissionManager.check_coach_permission(session, user_id)
+
+            is_coach = await DatabaseManager.execute_with_session(
+                _check_coach_permission
+            )
+
+            if not is_coach:
+                await message.answer(
+                    translator.get("coach.add_athlete.permission_denied", user_lang)
+                )
+                return
+
+            await state.set_state(UserStates.waiting_for_athlete_username)
+            await message.answer(
+                translator.get("coach.add_athlete.command_prompt", user_lang)
+            )
+
+        except Exception as e:
+            logger.error(f"Error in add_athlete command: {e}")
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await message.answer(error_msg)
+
+    @staticmethod
+    async def list_athletes_command(message: types.Message):
+        """Handle /list_athletes command."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is a coach
+            async def _check_and_get_athletes(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+                return await CoachAthleteRepository.get_coach_athletes(session, user_id)
+
+            athletes = await DatabaseManager.execute_with_session(
+                _check_and_get_athletes
+            )
+
+            if athletes is None:
+                await message.answer(
+                    translator.get("coach.list_athletes.permission_denied", user_lang)
+                )
+                return
+
+            if not athletes:
+                await message.answer(
+                    translator.get("coach.list_athletes.no_athletes", user_lang)
+                )
+                return
+
+            athletes_text = (
+                translator.get("coach.list_athletes.title", user_lang) + "\n\n"
+            )
+            for athlete in athletes:
+                name = athlete.first_name or athlete.username or "Unknown"
+                athletes_text += f"• {name}"
+                if athlete.username:
+                    athletes_text += f" (@{athlete.username})"
+                athletes_text += "\n"
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text="🔙 Back to Athletes", callback_data="coach_athletes"
+                ),
+                InlineKeyboardButton(
+                    text="🔙 Back to Progress",
+                    callback_data="view_all_athletes_progress",
+                ),
+                InlineKeyboardButton(
+                    text="🔙 Coach Panel", callback_data="coach_panel"
+                ),
+            )
+            keyboard.adjust(2)
+
+            await message.answer(
+                athletes_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+
+        except Exception as e:
+            logger.error(f"Error in list_athletes command: {e}")
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await message.answer(error_msg)
+
+    @staticmethod
+    async def remove_athlete_command(message: types.Message, state: FSMContext):
+        """Handle /remove_athlete command."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is a coach and get athletes
+            async def _check_and_get_athletes(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+                return await CoachAthleteRepository.get_coach_athletes(session, user_id)
+
+            athletes = await DatabaseManager.execute_with_session(
+                _check_and_get_athletes
+            )
+
+            if athletes is None:
+                await message.answer(
+                    "❌ You need to be a coach to remove athletes. Use /become_coach to upgrade your role."
+                )
+                return
+
+            if not athletes:
+                await message.answer(
+                    "👥 You don't have any athletes to remove.\n"
+                    "Use /add_athlete to add athletes first!"
+                )
+                return
+
+            # Create keyboard with athletes to remove
+            keyboard = InlineKeyboardBuilder()
+            for athlete in athletes:
+                name = athlete.first_name or athlete.username or "Unknown"
+                display_name = name
+                if athlete.username:
+                    display_name += f" (@{athlete.username})"
+
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=f"🗑️ {display_name}",
+                        callback_data=f"remove_athlete_{athlete.id}",
+                    )
+                )
+
+            keyboard.add(
+                InlineKeyboardButton(text="❌ Cancel", callback_data="back_to_menu")
+            )
+            keyboard.adjust(1)
+
+            await message.answer(
+                "👥 **Select athlete to remove:**",
+                reply_markup=keyboard.as_markup(),
+                parse_mode="Markdown",
+            )
+
+        except Exception as e:
+            logger.error(f"Error in remove_athlete command: {e}")
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await message.answer(error_msg)
+
+    @staticmethod
+    async def become_coach_command(message: types.Message):
+        """Handle /become_coach command."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Update user role to coach
+            async def _update_to_coach(session):
+                current_role = await UserRepository.get_user_role(session, user_id)
+                if current_role == UserRole.ATHLETE:
+                    new_role = UserRole.BOTH  # Keep athlete capabilities
+                else:
+                    new_role = UserRole.COACH
+
+                await UserRepository.update_user_role(session, user_id, new_role)
+                return new_role
+
+            new_role = await DatabaseManager.execute_with_session(_update_to_coach)
+
+            await message.answer(
+                translator.get("coach.become_coach.command_success", user_lang)
+            )
+
+        except Exception as e:
+            logger.error(f"Error in become_coach command: {e}")
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await message.answer(error_msg)
 
     @staticmethod
     async def handle_language_settings(callback: CallbackQuery):
@@ -241,6 +497,1489 @@ class BotHandlers:
         except Exception as e:
             logger.error(f"Error setting language: {e}")
             await callback.answer(translator.get("common.error", "en"))
+
+    # Coach Callback Handlers
+    @staticmethod
+    async def handle_coach_athletes(callback: CallbackQuery):
+        """Handle coach athletes menu."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is a coach and get athletes
+            async def _check_and_get_athletes(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+                return await CoachAthleteRepository.get_coach_athletes(session, user_id)
+
+            athletes = await DatabaseManager.execute_with_session(
+                _check_and_get_athletes
+            )
+
+            if athletes is None:
+                keyboard = InlineKeyboardBuilder()
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    )
+                )
+                await callback.message.edit_text(
+                    translator.get("coach.list_athletes.permission_denied", user_lang),
+                    reply_markup=keyboard.as_markup(),
+                )
+                await callback.answer()
+                return
+
+            if not athletes:
+                keyboard = InlineKeyboardBuilder()
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=translator.get(
+                            "coach.buttons.add_first_athlete", user_lang
+                        ),
+                        callback_data="add_athlete_callback",
+                    ),
+                    InlineKeyboardButton(
+                        text=translator.get("coach.buttons.coach_guide", user_lang),
+                        callback_data="coach_guide",
+                    ),
+                    InlineKeyboardButton(
+                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    ),
+                )
+                keyboard.adjust(2, 1)
+
+                welcome_text = (
+                    f"{translator.get('coach.buttons.my_athletes', user_lang)}\n\n"
+                    f"{translator.get('coach.dashboard.welcome', user_lang)}"
+                )
+                await callback.message.edit_text(
+                    welcome_text,
+                    reply_markup=keyboard.as_markup(),
+                    parse_mode="Markdown",
+                )
+                await callback.answer()
+                return
+
+            # Show athletes list with quick stats
+            athletes_text = (
+                translator.get(
+                    "coach.dashboard.athletes_list",
+                    user_lang,
+                    count=len(athletes),
+                )
+                + "\n\n"
+            )
+            keyboard = InlineKeyboardBuilder()
+
+            for athlete in athletes:
+                name = athlete.first_name or athlete.username or "Unknown"
+
+                # Get quick stats for this athlete
+                async def _get_athlete_stats(session):
+                    recent_measurements = (
+                        await MeasurementRepository.get_user_measurements(
+                            session, athlete.id, limit=1
+                        )
+                    )
+                    if recent_measurements:
+                        last_measurement = recent_measurements[0]
+                        days_ago = (
+                            datetime.now() - last_measurement.measurement_date
+                        ).days
+                        if days_ago == 0:
+                            return translator.get(
+                                "coach.dashboard.activity_today", user_lang
+                            )
+                        if days_ago == 1:
+                            return translator.get(
+                                "coach.dashboard.activity_yesterday", user_lang
+                            )
+                        return translator.get(
+                            "coach.dashboard.activity_days_ago",
+                            user_lang,
+                            days=days_ago,
+                        )
+                    return translator.get("coach.dashboard.activity_no_data", user_lang)
+
+                last_activity = await DatabaseManager.execute_with_session(
+                    _get_athlete_stats
+                )
+
+                athletes_text += f"• **{name}**"
+                if athlete.username:
+                    athletes_text += f" (@{athlete.username})"
+                athletes_text += f" - 📊 {last_activity}\n"
+
+                # Add button to view athlete details
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=f"📊 {name}", callback_data=f"view_athlete_{athlete.id}"
+                    )
+                )
+
+            athletes_text += (
+                f"\n{translator.get('coach.dashboard.quick_actions', user_lang)}\n"
+            )
+
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.add_athlete", user_lang),
+                    callback_data="add_athlete_callback",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.view_all_progress", user_lang),
+                    callback_data="view_all_athletes_progress",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.remove_athlete", user_lang),
+                    callback_data="remove_athlete_callback",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get(
+                        "coach.buttons.notification_settings", user_lang
+                    ),
+                    callback_data="coach_notifications",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.coach_stats", user_lang),
+                    callback_data="coach_stats",
+                ),
+                InlineKeyboardButton(
+                    text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                ),
+            )
+            keyboard.adjust(2, 2, 1, 1)
+
+            await callback.message.edit_text(
+                athletes_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error in coach athletes handler: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_add_athlete_callback(callback: CallbackQuery, state: FSMContext):
+        """Handle add athlete callback."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is a coach
+            async def _check_coach_permission(session):
+                return await PermissionManager.check_coach_permission(session, user_id)
+
+            is_coach = await DatabaseManager.execute_with_session(
+                _check_coach_permission
+            )
+
+            if not is_coach:
+                await callback.message.edit_text(
+                    translator.get("coach.add_athlete.permission_denied", user_lang)
+                )
+                await callback.answer()
+                return
+
+            await state.set_state(UserStates.waiting_for_athlete_username)
+            await callback.message.edit_text(
+                translator.get("coach.add_athlete.prompt", user_lang)
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error in add athlete callback: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_waiting_for_athlete_username(
+        message: types.Message, state: FSMContext
+    ):
+        """Handle athlete username input."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            if message.text == "/cancel":
+                await state.clear()
+                await message.answer(
+                    translator.get("coach.add_athlete.operation_cancelled", user_lang)
+                )
+                await BotHandlers.show_main_menu(message)
+                return
+
+            # Find the athlete user and send request
+            async def _find_and_send_request(session):
+                # Check coach permission
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return "not_coach"
+
+                # Find athlete user
+                athlete = await UserRepository.find_user_by_telegram_id_or_username(
+                    session, message.text.strip()
+                )
+
+                if not athlete:
+                    return "not_found"
+
+                if athlete.id == user_id:
+                    return "self"
+
+                # Check if already added
+                existing = await CoachAthleteRepository.is_coach_of_athlete(
+                    session, user_id, athlete.id
+                )
+                if existing:
+                    return "already_added"
+
+                # Create request (this will handle duplicate checks internally)
+                request = await AthleteCoachRequestRepository.create_request(
+                    session, user_id, athlete.id
+                )
+
+                # Check the result type
+                if hasattr(request, "status"):
+                    if request.status == "accepted":
+                        return "already_added"
+                    if (
+                        request.created_at
+                        and (datetime.now() - request.created_at).total_seconds() < 60
+                    ):
+                        return ("request_sent", athlete, request)
+                    return ("request_pending", athlete)
+
+                return ("request_sent", athlete, request)
+
+            result = await DatabaseManager.execute_with_session(_find_and_send_request)
+
+            if result == "not_coach":
+                await message.answer(
+                    translator.get("coach.add_athlete.permission_denied", user_lang)
+                )
+            elif result == "not_found":
+                await message.answer(
+                    translator.get("coach.add_athlete.not_found", user_lang)
+                )
+            elif result == "self":
+                await message.answer(
+                    translator.get("coach.add_athlete.self_add", user_lang)
+                )
+            elif result == "already_added":
+                await message.answer(
+                    translator.get("coach.add_athlete.already_added", user_lang)
+                )
+            elif result[0] == "request_pending":
+                athlete = result[1]
+                name = athlete.first_name or athlete.username or "Unknown"
+                username_part = (
+                    translator.get(
+                        "coach.add_athlete.username_format",
+                        user_lang,
+                        username=athlete.username,
+                    )
+                    if athlete.username
+                    else ""
+                )
+                await message.answer(
+                    translator.get(
+                        "coach.add_athlete.request_pending",
+                        user_lang,
+                        name=name,
+                        username=username_part,
+                    )
+                )
+            elif result[0] == "request_sent":
+                athlete = result[1]
+                request = result[2]
+                name = athlete.first_name or athlete.username or "Unknown"
+                username_part = (
+                    translator.get(
+                        "coach.add_athlete.username_format",
+                        user_lang,
+                        username=athlete.username,
+                    )
+                    if athlete.username
+                    else ""
+                )
+
+                # Send message to athlete about the request (only for new requests)
+                if hasattr(request, "id"):
+                    await BotHandlers.send_coach_request_notification(
+                        athlete.telegram_id, request
+                    )
+
+                await message.answer(
+                    translator.get(
+                        "coach.add_athlete.request_sent",
+                        user_lang,
+                        name=name,
+                        username=username_part,
+                    )
+                )
+
+            await state.clear()
+            await BotHandlers.show_main_menu(message)
+
+        except Exception as e:
+            logger.error(f"Error handling athlete username: {e}")
+            user_id = await BotHandlers.get_or_create_user(message.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await message.answer(error_msg)
+            await state.clear()
+
+    @staticmethod
+    async def send_coach_request_notification(athlete_telegram_id: int, request):
+        """Send notification to athlete about coach request."""
+        try:
+            # Get athlete's language
+            athlete_lang = await BotHandlers.get_user_language_by_telegram_id(
+                athlete_telegram_id
+            )
+
+            coach_name = request.coach.first_name or request.coach.username or "Unknown"
+
+            # Format date
+            date_str = request.created_at.strftime("%Y-%m-%d %H:%M")
+
+            # Create keyboard for request response
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.requests.accept", athlete_lang),
+                    callback_data=f"accept_request_{request.id}",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.requests.reject", athlete_lang),
+                    callback_data=f"reject_request_{request.id}",
+                ),
+            )
+            keyboard.adjust(2)
+
+            message_text = translator.get(
+                "coach.requests.incoming_request",
+                athlete_lang,
+                coach_name=coach_name,
+                date=date_str,
+                message=(
+                    translator.get(
+                        "coach.requests.with_message",
+                        athlete_lang,
+                        message=request.message,
+                    )
+                    if request.message
+                    else ""
+                ),
+            )
+
+            await bot.send_message(
+                athlete_telegram_id, message_text, reply_markup=keyboard.as_markup()
+            )
+
+        except Exception as e:
+            logger.error(f"Error sending coach request notification: {e}")
+
+    @staticmethod
+    async def handle_coach_requests(callback: CallbackQuery, state: FSMContext):
+        """Handle coach requests callback."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            async def _get_requests(session):
+                return await AthleteCoachRequestRepository.get_athlete_pending_requests(
+                    session, user_id
+                )
+
+            pending_requests = await DatabaseManager.execute_with_session(_get_requests)
+
+            if not pending_requests:
+                await callback.message.edit_text(
+                    translator.get("coach.requests.no_incoming", user_lang)
+                )
+                await callback.answer()
+                return
+
+            # Show first request
+            request = pending_requests[0]
+            await BotHandlers.show_coach_request_detail(
+                callback.message, request, user_lang
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error handling coach requests: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def show_coach_request_detail(message, request, user_lang):
+        """Show detailed view of a coach request."""
+        try:
+            coach_name = request.coach.first_name or request.coach.username or "Unknown"
+            date_str = request.created_at.strftime("%Y-%m-%d %H:%M")
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.requests.accept", user_lang),
+                    callback_data=f"accept_request_{request.id}",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.requests.reject", user_lang),
+                    callback_data=f"reject_request_{request.id}",
+                ),
+            )
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_menu", user_lang),
+                    callback_data="back_to_menu",
+                ),
+            )
+            keyboard.adjust(2)
+
+            message_text = translator.get(
+                "coach.requests.incoming_request",
+                user_lang,
+                coach_name=coach_name,
+                date=date_str,
+                message=(
+                    translator.get(
+                        "coach.requests.with_message",
+                        user_lang,
+                        message=request.message,
+                    )
+                    if request.message
+                    else ""
+                ),
+            )
+
+            await message.edit_text(message_text, reply_markup=keyboard.as_markup())
+
+        except Exception as e:
+            logger.error(f"Error showing coach request detail: {e}")
+
+    @staticmethod
+    async def handle_accept_request(callback: CallbackQuery, state: FSMContext):
+        """Handle accepting a coach request."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Extract request ID from callback data
+            request_id = int(callback.data.split("_")[-1])
+
+            async def _accept_request(session):
+                request = await AthleteCoachRequestRepository.accept_request(
+                    session, request_id
+                )
+                return request
+
+            request = await DatabaseManager.execute_with_session(_accept_request)
+
+            if not request:
+                await callback.message.edit_text(
+                    translator.get("coach.requests.expired", user_lang)
+                )
+                await callback.answer()
+                return
+
+            coach_name = request.coach.first_name or request.coach.username or "Unknown"
+
+            # Send confirmation to athlete
+            await callback.message.edit_text(
+                translator.get(
+                    "coach.requests.accepted",
+                    user_lang,
+                    coach_name=coach_name,
+                )
+            )
+
+            # Send notification to coach
+            coach_lang = await BotHandlers.get_user_language_by_telegram_id(
+                request.coach.telegram_id
+            )
+            athlete_name = (
+                request.athlete.first_name or request.athlete.username or "Unknown"
+            )
+
+            await bot.send_message(
+                request.coach.telegram_id,
+                translator.get(
+                    "coach.requests.coach_accepted",
+                    coach_lang,
+                    athlete_name=athlete_name,
+                ),
+            )
+
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error accepting coach request: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_reject_request(callback: CallbackQuery, state: FSMContext):
+        """Handle rejecting a coach request."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Extract request ID from callback data
+            request_id = int(callback.data.split("_")[-1])
+
+            async def _reject_request(session):
+                request = await AthleteCoachRequestRepository.reject_request(
+                    session, request_id
+                )
+                return request
+
+            request = await DatabaseManager.execute_with_session(_reject_request)
+
+            if not request:
+                await callback.message.edit_text(
+                    translator.get("coach.requests.expired", user_lang)
+                )
+                await callback.answer()
+                return
+
+            coach_name = request.coach.first_name or request.coach.username or "Unknown"
+
+            # Send confirmation to athlete
+            await callback.message.edit_text(
+                translator.get(
+                    "coach.requests.rejected",
+                    user_lang,
+                    coach_name=coach_name,
+                )
+            )
+
+            # Send notification to coach
+            coach_lang = await BotHandlers.get_user_language_by_telegram_id(
+                request.coach.telegram_id
+            )
+            athlete_name = (
+                request.athlete.first_name or request.athlete.username or "Unknown"
+            )
+
+            await bot.send_message(
+                request.coach.telegram_id,
+                translator.get(
+                    "coach.requests.coach_rejected",
+                    coach_lang,
+                    athlete_name=athlete_name,
+                ),
+            )
+
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error rejecting coach request: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_remove_athlete_callback(callback: CallbackQuery):
+        """Handle remove athlete callback."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Get coach's athletes
+            async def _check_and_get_athletes(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+                return await CoachAthleteRepository.get_coach_athletes(session, user_id)
+
+            athletes = await DatabaseManager.execute_with_session(
+                _check_and_get_athletes
+            )
+
+            if athletes is None:
+                await callback.message.edit_text(
+                    "❌ You need to be a coach to remove athletes."
+                )
+                await callback.answer()
+                return
+
+            if not athletes:
+                await callback.message.edit_text(
+                    "👥 You don't have any athletes to remove.\n"
+                    "Use the menu to add athletes first!"
+                )
+                await callback.answer()
+                return
+
+            # Create keyboard with athletes to remove
+            keyboard = InlineKeyboardBuilder()
+            for athlete in athletes:
+                name = athlete.first_name or athlete.username or "Unknown"
+                display_name = name
+                if athlete.username:
+                    display_name += f" (@{athlete.username})"
+
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=f"🗑️ {display_name}",
+                        callback_data=f"confirm_remove_athlete_{athlete.id}",
+                    )
+                )
+
+            keyboard.add(
+                InlineKeyboardButton(text="❌ Cancel", callback_data="coach_athletes")
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                "👥 **Remove Athlete**\n\n"
+                "Select the athlete you want to remove from your supervision:",
+                reply_markup=keyboard.as_markup(),
+                parse_mode="Markdown",
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error in remove athlete callback: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_confirm_remove_athlete(callback: CallbackQuery):
+        """Handle confirm remove athlete."""
+        try:
+            # Extract athlete ID from callback data
+            athlete_id = int(callback.data.replace("confirm_remove_athlete_", ""))
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+
+            # Remove athlete
+            async def _remove_athlete(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return False
+
+                # Get athlete info before removing
+                athlete = await UserRepository.get_user_by_id(session, athlete_id)
+                if not athlete:
+                    return False
+
+                # Remove relationship
+                success = await CoachAthleteRepository.remove_athlete_from_coach(
+                    session, user_id, athlete_id
+                )
+                return (success, athlete)
+
+            result = await DatabaseManager.execute_with_session(_remove_athlete)
+
+            if not result or not result[0]:
+                user_lang = await BotHandlers.get_user_language(user_id)
+                await callback.message.edit_text(
+                    translator.get("coach.remove_athlete.failed", user_lang)
+                )
+                await callback.answer()
+                return
+
+            success, athlete = result
+            name = athlete.first_name or athlete.username or "Unknown"
+
+            await callback.message.edit_text(
+                f"✅ **Athlete Removed**\n\n"
+                f"👤 {name}"
+                f"{f' (@{athlete.username})' if athlete.username else ''}\n\n"
+                f"has been removed from your supervision."
+            )
+
+            # Show back to athletes menu after delay
+            await asyncio.sleep(2)
+            await BotHandlers.handle_coach_athletes(callback)
+
+        except Exception as e:
+            logger.error(f"Error confirming remove athlete: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_coach_notifications(callback: CallbackQuery):
+        """Handle coach notifications menu."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is a coach
+            async def _check_coach_and_get_preferences(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+
+                # Initialize default preferences if none exist
+                preferences = await CoachNotificationRepository.get_coach_notification_preferences(
+                    session, user_id
+                )
+                if not preferences:
+                    preferences = await CoachNotificationRepository.initialize_default_preferences(
+                        session, user_id
+                    )
+
+                return preferences
+
+            preferences = await DatabaseManager.execute_with_session(
+                _check_coach_and_get_preferences
+            )
+
+            if preferences is None:
+                keyboard = InlineKeyboardBuilder()
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    )
+                )
+                await callback.message.edit_text(
+                    translator.get("coach.notifications.permission_denied", user_lang),
+                    reply_markup=keyboard.as_markup(),
+                )
+                await callback.answer()
+                return
+
+            # Build preferences display
+            prefs_text = (
+                translator.get("coach.notifications.settings_title", user_lang) + "\n\n"
+            )
+            keyboard = InlineKeyboardBuilder()
+
+            pref_dict = {
+                pref.notification_type: pref.is_enabled for pref in preferences
+            }
+
+            for notification_type in CoachNotificationType:
+                is_enabled = pref_dict.get(notification_type.value, True)
+                status = "✅" if is_enabled else "❌"
+
+                if notification_type == CoachNotificationType.ATHLETE_MEASUREMENT_ADDED:
+                    name = translator.get(
+                        "coach.notifications.types.athlete_measurement_added.name",
+                        user_lang,
+                    )
+                    desc = translator.get(
+                        "coach.notifications.types.athlete_measurement_added.description",
+                        user_lang,
+                    )
+                elif notification_type == CoachNotificationType.ATHLETE_GOAL_ACHIEVED:
+                    name = translator.get(
+                        "coach.notifications.types.athlete_goal_achieved.name",
+                        user_lang,
+                    )
+                    desc = translator.get(
+                        "coach.notifications.types.athlete_goal_achieved.description",
+                        user_lang,
+                    )
+                elif notification_type == CoachNotificationType.ATHLETE_INACTIVE:
+                    name = translator.get(
+                        "coach.notifications.types.athlete_inactive.name", user_lang
+                    )
+                    desc = translator.get(
+                        "coach.notifications.types.athlete_inactive.description",
+                        user_lang,
+                    )
+                elif notification_type == CoachNotificationType.DAILY_SUMMARY:
+                    name = translator.get(
+                        "coach.notifications.types.daily_summary.name", user_lang
+                    )
+                    desc = translator.get(
+                        "coach.notifications.types.daily_summary.description", user_lang
+                    )
+                else:
+                    name = notification_type.value.replace("_", " ").title()
+                    desc = ""
+
+                prefs_text += f"{status} **{name}**\n{desc}\n\n"
+
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=f"{status} {name}",
+                        callback_data=f"toggle_coach_notification_{notification_type.value}",
+                    )
+                )
+
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get(
+                        "coach.buttons.notification_history", user_lang
+                    ),
+                    callback_data="coach_notification_history",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_coach_panel", user_lang),
+                    callback_data="coach_panel",
+                ),
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                prefs_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error in coach notifications handler: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_toggle_coach_notification(callback: CallbackQuery):
+        """Handle toggling coach notification preferences."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Extract notification type from callback data
+            notification_type_str = callback.data.replace(
+                "toggle_coach_notification_", ""
+            )
+            notification_type = CoachNotificationType(notification_type_str)
+
+            # Toggle preference
+            async def _toggle_preference(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    logger.warning(
+                        f"User {user_id} attempted to toggle notification without coach permissions"
+                    )
+                    return None  # Return None to indicate permission error
+
+                current_pref = (
+                    await CoachNotificationRepository.get_notification_preference(
+                        session, user_id, notification_type
+                    )
+                )
+
+                current_enabled = current_pref.is_enabled if current_pref else True
+                new_enabled = not current_enabled
+
+                logger.debug(
+                    f"Toggling notification {notification_type} for coach {user_id}: {current_enabled} -> {new_enabled}"
+                )
+
+                await CoachNotificationRepository.create_notification_preference(
+                    session, user_id, notification_type, new_enabled
+                )
+
+                return new_enabled  # Return the boolean value (True/False)
+
+            result = await DatabaseManager.execute_with_session(_toggle_preference)
+
+            if result is None:
+                await callback.answer(
+                    translator.get("coach.errors.permission_denied", user_lang)
+                )
+                return
+
+            new_enabled = result
+
+            # Show confirmation message first
+            status = (
+                translator.get("buttons.enable", user_lang).replace("✅ ", "")
+                if new_enabled
+                else translator.get("buttons.disable", user_lang).replace("❌ ", "")
+            )
+            notification_name = notification_type_str.replace("_", " ").title()
+
+            await callback.message.edit_text(
+                translator.get(
+                    "coach.notifications.toggle_success",
+                    user_lang,
+                    name=notification_name,
+                    status=status,
+                ),
+                parse_mode="Markdown",
+            )
+            toggle_msg = (
+                translator.get("coach.notifications.toggle_enabled", user_lang)
+                if new_enabled
+                else translator.get("coach.notifications.toggle_disabled", user_lang)
+            )
+            await callback.answer(toggle_msg)
+
+            # Wait a moment then refresh the menu
+            await asyncio.sleep(1.5)
+            await BotHandlers.handle_coach_notifications(callback)
+
+        except Exception as e:
+            logger.error(f"Error toggling coach notification: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_coach_notification_history(callback: CallbackQuery):
+        """Handle showing coach notification history."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Get notification history
+            async def _get_history(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+                return await CoachNotificationRepository.get_coach_notification_history(
+                    session, user_id
+                )
+
+            history = await DatabaseManager.execute_with_session(_get_history)
+
+            if history is None:
+                await callback.answer(
+                    translator.get("coach.errors.permission_denied", user_lang)
+                )
+                return
+
+            if not history:
+                text = translator.get("coach.notifications.history_empty", user_lang)
+            else:
+                text = (
+                    translator.get("coach.notifications.history_title", user_lang)
+                    + "\n\n"
+                )
+                for notification in history[:10]:  # Show last 10
+                    athlete_name = (
+                        notification.athlete.first_name
+                        or notification.athlete.username
+                        or "Unknown"
+                    )
+                    date_str = notification.created_at.strftime("%m/%d %H:%M")
+                    status = "✅" if notification.is_sent else "⏳"
+
+                    text += f"{status} {date_str} - {athlete_name}\n"
+                    if (
+                        notification.notification_type
+                        == CoachNotificationType.ATHLETE_MEASUREMENT_ADDED.value
+                    ):
+                        text += "   📊 New measurement added\n"
+                    text += "\n"
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=f"🔙 {translator.get('coach.buttons.coach_notifications', user_lang)}",
+                    callback_data="coach_notifications",
+                )
+            )
+
+            await callback.message.edit_text(
+                text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error showing notification history: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_become_coach_callback(callback: CallbackQuery):
+        """Handle become coach button."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Update user role to coach
+            async def _update_to_coach(session):
+                current_role = await UserRepository.get_user_role(session, user_id)
+                if current_role == UserRole.ATHLETE:
+                    new_role = UserRole.BOTH  # Keep athlete capabilities
+                else:
+                    new_role = UserRole.COACH
+
+                await UserRepository.update_user_role(session, user_id, new_role)
+                return new_role
+
+            new_role = await DatabaseManager.execute_with_session(_update_to_coach)
+
+            await callback.message.edit_text(
+                translator.get("coach.become_coach.success", user_lang)
+            )
+
+            await callback.answer(
+                translator.get("coach.become_coach.welcome_answer", user_lang)
+            )
+
+            # Show updated main menu after a brief delay
+            await asyncio.sleep(2)
+            await BotHandlers.show_main_menu(callback.message)
+
+        except Exception as e:
+            logger.error(f"Error in become coach callback: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_view_all_athletes_progress(callback: CallbackQuery):
+        """Handle viewing progress for all athletes."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Get recent measurements from all athletes
+            async def _get_athletes_progress(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+
+                # Get all athletes
+                athletes = await CoachAthleteRepository.get_coach_athletes(
+                    session, user_id
+                )
+                if not athletes:
+                    return []
+
+                # Get recent measurements for each athlete
+                progress_data = []
+                for athlete in athletes:
+                    latest_measurements = (
+                        await MeasurementRepository.get_athlete_latest_measurements(
+                            session, user_id, athlete.id
+                        )
+                    )
+
+                    athlete_data = {
+                        "athlete": athlete,
+                        "measurements": latest_measurements[:3],  # Show last 3 types
+                    }
+                    progress_data.append(athlete_data)
+
+                return progress_data
+
+            progress_data = await DatabaseManager.execute_with_session(
+                _get_athletes_progress
+            )
+
+            if progress_data is None:
+                keyboard = InlineKeyboardBuilder()
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    )
+                )
+                await callback.message.edit_text(
+                    "❌ You need to be a coach to view athlete progress.",
+                    reply_markup=keyboard.as_markup(),
+                )
+                await callback.answer()
+                return
+
+            if not progress_data:
+                keyboard = InlineKeyboardBuilder()
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    )
+                )
+
+                await callback.message.edit_text(
+                    translator.get("coach.progress.no_athletes", user_lang),
+                    reply_markup=keyboard.as_markup(),
+                )
+                await callback.answer()
+                return
+
+            # Build progress text
+            progress_text = (
+                translator.get("coach.progress.overview_title", user_lang) + "\n\n"
+            )
+
+            for athlete_data in progress_data:
+                athlete = athlete_data["athlete"]
+                measurements = athlete_data["measurements"]
+
+                athlete_name = athlete.first_name or athlete.username or "Unknown"
+                progress_text += f"👤 **{athlete_name}**\n"
+
+                if measurements:
+                    for measurement in measurements:
+                        date_str = measurement.measurement_date.strftime("%m/%d")
+                        progress_text += f"   {translator.get('coach.progress.measurement_format', user_lang, type=measurement.measurement_type.name, value=measurement.value, unit=measurement.measurement_type.unit, date=date_str)}\n"
+                else:
+                    progress_text += f"   {translator.get('coach.progress.no_measurements', user_lang)}\n"
+
+                progress_text += "\n"
+
+            keyboard = InlineKeyboardBuilder()
+
+            # Add buttons for individual athlete details
+            for athlete_data in progress_data:
+                athlete = athlete_data["athlete"]
+                athlete_name = athlete.first_name or athlete.username or "Unknown"
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=translator.get(
+                            "coach.buttons.view_athlete_details",
+                            user_lang,
+                            name=athlete_name,
+                        ),
+                        callback_data=f"view_athlete_{athlete.id}",
+                    )
+                )
+
+            keyboard.add(
+                InlineKeyboardButton(
+                    text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                )
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                progress_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error viewing all athletes progress: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_view_athlete_detail(callback: CallbackQuery):
+        """Handle viewing individual athlete details."""
+        try:
+            # Extract athlete ID from callback data
+            athlete_id = int(callback.data.replace("view_athlete_", ""))
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+
+            # Get athlete details and measurements
+            async def _get_athlete_details(session):
+                # Check permission
+                has_permission = await CoachAthleteRepository.is_coach_of_athlete(
+                    session, user_id, athlete_id
+                )
+                if not has_permission:
+                    return None
+
+                # Get athlete info
+                athlete = await UserRepository.get_user_by_id(session, athlete_id)
+                if not athlete:
+                    return None
+
+                # Get recent measurements
+                measurements = (
+                    await MeasurementRepository.get_athlete_measurements_for_coach(
+                        session, user_id, athlete_id, limit=10
+                    )
+                )
+
+                return {"athlete": athlete, "measurements": measurements}
+
+            data = await DatabaseManager.execute_with_session(_get_athlete_details)
+
+            if not data:
+                await callback.message.edit_text(
+                    "❌ Permission denied or athlete not found."
+                )
+                await callback.answer()
+                return
+
+            athlete = data["athlete"]
+            measurements = data["measurements"]
+            athlete_name = athlete.first_name or athlete.username or "Unknown"
+
+            # Build detailed view
+            detail_text = f"👤 **{athlete_name}**\n"
+            if athlete.username:
+                detail_text += f"@{athlete.username}\n"
+            detail_text += "\n"
+
+            if measurements:
+                detail_text += "📊 **Recent Measurements:**\n\n"
+                for measurement in measurements:
+                    date_str = measurement.measurement_date.strftime("%m/%d %H:%M")
+                    detail_text += f"📏 **{measurement.measurement_type.name}**\n"
+                    detail_text += (
+                        f"   {measurement.value} {measurement.measurement_type.unit}\n"
+                    )
+                    detail_text += f"   📅 {date_str}\n"
+                    if measurement.notes:
+                        detail_text += f"   📝 {measurement.notes}\n"
+                    detail_text += "\n"
+            else:
+                detail_text += "📭 No measurements recorded yet.\n"
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text="📈 View Full History",
+                    callback_data=f"athlete_full_history_{athlete_id}",
+                ),
+                InlineKeyboardButton(
+                    text="🗑️ Remove Athlete",
+                    callback_data=f"confirm_remove_athlete_{athlete_id}",
+                ),
+                InlineKeyboardButton(
+                    text="🔙 Back to Progress",
+                    callback_data="view_all_athletes_progress",
+                ),
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                detail_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error viewing athlete detail: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_coach_stats(callback: CallbackQuery):
+        """Handle viewing coach statistics."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Get coach statistics
+            async def _get_coach_stats(session):
+                is_coach = await PermissionManager.check_coach_permission(
+                    session, user_id
+                )
+                if not is_coach:
+                    return None
+
+                # Get athlete count
+                athlete_count = await CoachAthleteRepository.get_coach_athlete_count(
+                    session, user_id
+                )
+
+                # Get notification stats
+                notification_stats = (
+                    await CoachNotificationRepository.get_notification_stats(
+                        session, user_id
+                    )
+                )
+
+                # Get recent activity
+                recent_measurements = await MeasurementRepository.get_recent_measurements_for_coach_athletes(
+                    session, user_id, days=7
+                )
+
+                return {
+                    "athlete_count": athlete_count,
+                    "notification_stats": notification_stats,
+                    "recent_measurements": len(recent_measurements),
+                    "athletes_active_today": len(
+                        set(
+                            m.user_id
+                            for m in recent_measurements
+                            if (datetime.now() - m.measurement_date).days == 0
+                        )
+                    ),
+                }
+
+            stats = await DatabaseManager.execute_with_session(_get_coach_stats)
+
+            if stats is None:
+                await callback.message.edit_text("❌ Permission denied.")
+                await callback.answer()
+                return
+
+            stats_text = translator.get("coach.stats.title", user_lang) + "\n\n"
+            stats_text += (
+                translator.get(
+                    "coach.stats.athletes_count",
+                    user_lang,
+                    count=stats["athlete_count"],
+                )
+                + "\n"
+            )
+            stats_text += (
+                translator.get(
+                    "coach.stats.measurements_week",
+                    user_lang,
+                    count=stats["recent_measurements"],
+                )
+                + "\n"
+            )
+            stats_text += (
+                translator.get(
+                    "coach.stats.active_today",
+                    user_lang,
+                    count=stats["athletes_active_today"],
+                )
+                + "\n\n"
+            )
+
+            stats_text += (
+                translator.get("coach.stats.notifications_title", user_lang) + "\n"
+            )
+            stats_text += f"   {translator.get('coach.stats.notifications_sent', user_lang, count=stats['notification_stats']['sent'])}\n"
+            stats_text += f"   {translator.get('coach.stats.notifications_pending', user_lang, count=stats['notification_stats']['pending'])}\n"
+            stats_text += f"   {translator.get('coach.stats.measurement_alerts', user_lang, count=stats['notification_stats'].get('athlete_measurement_added', 0))}\n\n"
+
+            if stats["athlete_count"] > 0:
+                engagement_rate = (
+                    stats["athletes_active_today"] / stats["athlete_count"]
+                ) * 100
+                stats_text += (
+                    translator.get(
+                        "coach.stats.engagement_rate",
+                        user_lang,
+                        rate=f"{engagement_rate:.1f}",
+                    )
+                    + "\n"
+                )
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text="🔔 Notification History",
+                    callback_data="coach_notification_history",
+                ),
+                InlineKeyboardButton(
+                    text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                ),
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                stats_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error viewing coach stats: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_coach_panel(callback: CallbackQuery):
+        """Handle showing coach panel with all coach functions."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is actually a coach
+            async def _check_coach_role(session):
+                return await UserRepository.is_user_coach(session, user_id)
+
+            is_coach = await DatabaseManager.execute_with_session(_check_coach_role)
+
+            if not is_coach:
+                await callback.answer(
+                    translator.get("coach.errors.permission_denied", user_lang)
+                )
+                return
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.my_athletes", user_lang),
+                    callback_data="coach_athletes",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.athletes_progress", user_lang),
+                    callback_data="view_all_athletes_progress",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.coach_notifications", user_lang),
+                    callback_data="coach_notifications",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.coach_stats", user_lang),
+                    callback_data="coach_stats",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.coach_guide", user_lang),
+                    callback_data="coach_guide",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_menu", user_lang),
+                    callback_data="back_to_menu",
+                ),
+            )
+            keyboard.adjust(2)
+
+            # Add invisible element to ensure message content is different
+            import random
+
+            invisible_char = chr(0x200B) * random.randint(0, 3)  # Zero-width space
+            panel_text = translator.get("coach.panel.title", user_lang) + invisible_char
+
+            await callback.message.edit_text(
+                panel_text,
+                reply_markup=keyboard.as_markup(),
+                parse_mode="Markdown",
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error(f"Error in coach panel: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_coach_guide(callback: CallbackQuery):
+        """Handle showing coach guide."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            guide_text = f"{translator.get('coach.guide.title', user_lang)}\n\n{translator.get('coach.guide.content', user_lang)}"
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("coach.buttons.add_first_athlete", user_lang),
+                    callback_data="add_athlete_callback",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back", user_lang),
+                    callback_data="coach_panel",
+                ),
+            )
+            keyboard.adjust(2)
+
+            await callback.message.edit_text(
+                guide_text, reply_markup=keyboard.as_markup()
+            )
+            await callback.answer()
+        except Exception as e:
+            logger.error(f"Error in coach guide: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
 
     @staticmethod
     async def handle_add_measurement(callback: CallbackQuery):
@@ -356,7 +2095,6 @@ class BotHandlers:
             unit_name = translator.get_unit_name(measurement_type.unit, user_lang)
 
             if latest:
-
                 message_text = translator.get(
                     "add_measurement.enter_value",
                     user_lang,
@@ -588,11 +2326,9 @@ class BotHandlers:
                         session, user_id
                     )
                 )
-                all_types = (
-                    await (
-                        MeasurementTypeRepository.get_available_types_for_user(
-                            session, user_id
-                        )
+                all_types = await (
+                    MeasurementTypeRepository.get_available_types_for_user(
+                        session, user_id
                     )
                 )
                 user_type_ids = {ut.measurement_type_id for ut in user_types}
@@ -857,7 +2593,7 @@ class BotHandlers:
 
     @staticmethod
     async def create_custom_measurement_type(
-        message: Message, state: FSMContext, description: Optional[str] = None
+        message: Message, state: FSMContext, description: str | None = None
     ):
         """Create the custom measurement type and add it to user's tracking list."""
         try:
@@ -869,11 +2605,9 @@ class BotHandlers:
 
             async def _create_and_add_type(session):
                 # Create the custom measurement type
-                custom_type = (
-                    await (
-                        MeasurementTypeRepository.create_custom_measurement_type(
-                            session, name, unit, user_id, description
-                        )
+                custom_type = await (
+                    MeasurementTypeRepository.create_custom_measurement_type(
+                        session, name, unit, user_id, description or ""
                     )
                 )
 
@@ -1130,9 +2864,11 @@ class BotHandlers:
                 )
                 return measurement_type, measurements, stats
 
-            measurement_type, measurements, stats = (
-                await DatabaseManager.execute_with_session(_get_progress_data)
-            )
+            (
+                measurement_type,
+                measurements,
+                stats,
+            ) = await DatabaseManager.execute_with_session(_get_progress_data)
 
             type_name = translator.get_measurement_type_name(
                 measurement_type.name, user_lang
@@ -1299,9 +3035,8 @@ class BotHandlers:
     async def handle_back_to_menu(callback: CallbackQuery):
         """Handle back to main menu."""
         try:
-            user_lang = await BotHandlers.get_user_language_by_telegram_id(
-                callback.from_user.id
-            )
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
 
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
@@ -1329,6 +3064,31 @@ class BotHandlers:
                     text=translator.get("buttons.notifications", user_lang),
                     callback_data="notifications",
                 ),
+            )
+
+            # Add coach options if user is a coach
+            async def _check_coach_role(session):
+                return await UserRepository.is_user_coach(session, user_id)
+
+            is_coach = await DatabaseManager.execute_with_session(_check_coach_role)
+
+            if is_coach:
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=translator.get("coach.buttons.coach_panel", user_lang),
+                        callback_data="coach_panel",
+                    ),
+                )
+            else:
+                # Add "Become Coach" button for regular users
+                keyboard.add(
+                    InlineKeyboardButton(
+                        text=translator.get("coach.buttons.become_coach", user_lang),
+                        callback_data="become_coach_callback",
+                    ),
+                )
+
+            keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("buttons.language_settings", user_lang),
                     callback_data="language_settings",
@@ -1336,12 +3096,22 @@ class BotHandlers:
             )
             keyboard.adjust(2)
 
+            # Add invisible element to ensure message content is different
+            import random
+
+            invisible_char = chr(0x200B) * random.randint(0, 3)  # Zero-width space
+            menu_text = (
+                translator.get("commands.menu.title", user_lang) + invisible_char
+            )
+
             await callback.message.edit_text(
-                translator.get("commands.menu.title", user_lang),
+                menu_text,
                 reply_markup=keyboard.as_markup(),
             )
+            await callback.answer()
+
         except Exception as e:
-            logger.error(f"Error in back_to_menu: {e}")
+            logger.error(f"Error in handle_back_to_menu: {e}")
             await callback.answer(translator.get("common.error", "en"))
 
     @staticmethod
@@ -1763,9 +3533,11 @@ class BotHandlers:
                     "de": "Europe/Berlin",
                     "fr": "Europe/Paris",
                     "es": "Europe/Madrid",
-                    "it": "Europe/Rome"
+                    "it": "Europe/Rome",
                 }
-                user_timezone = timezone_mapping.get(message.from_user.language_code, "UTC")
+                user_timezone = timezone_mapping.get(
+                    message.from_user.language_code, "UTC"
+                )
 
             async def _create_schedule(session):
                 # Check if schedule already exists
@@ -2320,6 +4092,11 @@ class BotHandlers:
 # Register handlers
 dp.message.register(BotHandlers.start_command, Command("start"))
 dp.message.register(BotHandlers.menu_command, Command("menu"))
+# Coach commands
+dp.message.register(BotHandlers.add_athlete_command, Command("add_athlete"))
+dp.message.register(BotHandlers.list_athletes_command, Command("list_athletes"))
+dp.message.register(BotHandlers.remove_athlete_command, Command("remove_athlete"))
+dp.message.register(BotHandlers.become_coach_command, Command("become_coach"))
 dp.message.register(
     BotHandlers.handle_measurement_value,
     StateFilter(UserStates.waiting_for_measurement_value),
@@ -2340,11 +4117,64 @@ dp.message.register(
     BotHandlers.handle_notification_time,
     StateFilter(UserStates.waiting_for_notification_time),
 )
+# Coach state handlers
+dp.message.register(
+    BotHandlers.handle_waiting_for_athlete_username,
+    StateFilter(UserStates.waiting_for_athlete_username),
+)
 
 # Callback handlers
 dp.callback_query.register(
     BotHandlers.handle_add_measurement, F.data == "add_measurement"
 )
+# Coach callback handlers
+dp.callback_query.register(BotHandlers.handle_coach_panel, F.data == "coach_panel")
+dp.callback_query.register(
+    BotHandlers.handle_coach_athletes, F.data == "coach_athletes"
+)
+dp.callback_query.register(
+    BotHandlers.handle_add_athlete_callback, F.data == "add_athlete_callback"
+)
+dp.callback_query.register(
+    BotHandlers.handle_remove_athlete_callback, F.data == "remove_athlete_callback"
+)
+dp.callback_query.register(
+    BotHandlers.handle_confirm_remove_athlete,
+    F.data.startswith("confirm_remove_athlete_"),
+)
+dp.callback_query.register(
+    BotHandlers.handle_coach_notifications, F.data == "coach_notifications"
+)
+dp.callback_query.register(
+    BotHandlers.handle_toggle_coach_notification,
+    F.data.startswith("toggle_coach_notification_"),
+)
+dp.callback_query.register(
+    BotHandlers.handle_coach_notification_history,
+    F.data == "coach_notification_history",
+)
+dp.callback_query.register(
+    BotHandlers.handle_become_coach_callback, F.data == "become_coach_callback"
+)
+# Coach request callback handlers
+dp.callback_query.register(
+    BotHandlers.handle_coach_requests, F.data == "coach_requests"
+)
+dp.callback_query.register(
+    BotHandlers.handle_accept_request, F.data.startswith("accept_request_")
+)
+dp.callback_query.register(
+    BotHandlers.handle_reject_request, F.data.startswith("reject_request_")
+)
+dp.callback_query.register(
+    BotHandlers.handle_view_all_athletes_progress,
+    F.data == "view_all_athletes_progress",
+)
+dp.callback_query.register(
+    BotHandlers.handle_view_athlete_detail, F.data.startswith("view_athlete_")
+)
+dp.callback_query.register(BotHandlers.handle_coach_stats, F.data == "coach_stats")
+dp.callback_query.register(BotHandlers.handle_coach_guide, F.data == "coach_guide")
 dp.callback_query.register(
     BotHandlers.handle_measure_type, F.data.startswith("measure_")
 )

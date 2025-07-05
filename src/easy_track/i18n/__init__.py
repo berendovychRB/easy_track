@@ -1,3 +1,3 @@
-from .translator import translator, Translator
+from .translator import Translator, translator
 
-__all__ = ["translator", "Translator"]
+__all__ = ["Translator", "translator"]

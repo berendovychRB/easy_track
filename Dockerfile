@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.11-slim-bookworm
 
 # Set working directory
 WORKDIR /app
@@ -12,6 +12,9 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         gcc \
         postgresql-client \
+        ca-certificates \
+        gnupg \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies

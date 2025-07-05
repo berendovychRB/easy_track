@@ -7,7 +7,6 @@ by simulating the bot's handle_add_measurement flow step by step.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -19,13 +18,14 @@ from sqlalchemy import text
 
 from easy_track.database import DatabaseManager, init_db
 from easy_track.repositories import (
-    UserRepository,
     MeasurementTypeRepository,
-    UserMeasurementTypeRepository
+    UserMeasurementTypeRepository,
+    UserRepository,
 )
 
 # Load environment variables
 load_dotenv()
+
 
 async def setup_bot_test_data():
     """Set up the exact data scenario that triggers the error."""
@@ -40,8 +40,12 @@ async def setup_bot_test_data():
 
         # Reset sequences
         await session.execute(text("ALTER SEQUENCE users_id_seq RESTART WITH 1"))
-        await session.execute(text("ALTER SEQUENCE measurement_types_id_seq RESTART WITH 1"))
-        await session.execute(text("ALTER SEQUENCE user_measurement_types_id_seq RESTART WITH 1"))
+        await session.execute(
+            text("ALTER SEQUENCE measurement_types_id_seq RESTART WITH 1")
+        )
+        await session.execute(
+            text("ALTER SEQUENCE user_measurement_types_id_seq RESTART WITH 1")
+        )
 
         # Create user exactly like the bot does
         user = await UserRepository.create_user(
@@ -49,7 +53,7 @@ async def setup_bot_test_data():
             telegram_id=123456789,
             username="testuser",
             first_name="Test",
-            last_name="User"
+            last_name="User",
         )
         print(f"✅ Created user: {user.id} (telegram_id: {user.telegram_id})")
 
@@ -66,15 +70,21 @@ async def setup_bot_test_data():
 
     return await DatabaseManager.execute_with_session(create_bot_scenario)
 
+
 async def reproduce_handle_add_measurement_error(user_id):
     """Reproduce the exact error from handle_add_measurement method."""
     print(f"\n🎯 Reproducing handle_add_measurement error for user {user_id}...")
 
     # This is the EXACT code from the bot's handle_add_measurement method
     try:
+
         async def _get_user_types(session):
-            print("   📋 Calling UserMeasurementTypeRepository.get_user_measurement_types...")
-            return await UserMeasurementTypeRepository.get_user_measurement_types(session, user_id)
+            print(
+                "   📋 Calling UserMeasurementTypeRepository.get_user_measurement_types..."
+            )
+            return await UserMeasurementTypeRepository.get_user_measurement_types(
+                session, user_id
+            )
 
         print("   🔄 Executing with session...")
         user_types = await DatabaseManager.execute_with_session(_get_user_types)
@@ -89,18 +99,23 @@ async def reproduce_handle_add_measurement_error(user_id):
 
         # Print the exact error details
         import traceback
-        print(f"   Full traceback:")
+
+        print("   Full traceback:")
         traceback.print_exc()
 
         return None
 
+
 async def reproduce_add_measurement_type_scenario(user_id, measurement_type_id):
     """Reproduce the scenario where user adds a measurement type."""
-    print(f"\n🔧 Testing add_measurement_type_to_user scenario...")
+    print("\n🔧 Testing add_measurement_type_to_user scenario...")
 
     try:
+
         async def _add_type(session):
-            print(f"   📋 Adding measurement type {measurement_type_id} to user {user_id}...")
+            print(
+                f"   📋 Adding measurement type {measurement_type_id} to user {user_id}..."
+            )
             return await UserMeasurementTypeRepository.add_measurement_type_to_user(
                 session, user_id, measurement_type_id
             )
@@ -112,12 +127,14 @@ async def reproduce_add_measurement_type_scenario(user_id, measurement_type_id):
     except Exception as e:
         print(f"   ❌ ERROR in add_measurement_type: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 
+
 async def test_raw_sql_equivalent():
     """Test the raw SQL equivalent of the problematic query."""
-    print(f"\n🔬 Testing raw SQL equivalent...")
+    print("\n🔬 Testing raw SQL equivalent...")
 
     async def _test_raw(session):
         # Test the exact query that should be generated
@@ -143,14 +160,16 @@ async def test_raw_sql_equivalent():
 
     await DatabaseManager.execute_with_session(_test_raw)
 
+
 async def test_original_sqlalchemy_query(user_id):
     """Test the original SQLAlchemy query that was causing issues."""
-    print(f"\n⚠️  Testing ORIGINAL problematic SQLAlchemy query...")
+    print("\n⚠️  Testing ORIGINAL problematic SQLAlchemy query...")
 
     async def _test_original(session):
-        from sqlalchemy import select, and_
+        from sqlalchemy import and_, select
         from sqlalchemy.orm import selectinload
-        from easy_track.models import UserMeasurementType, MeasurementType
+
+        from easy_track.models import MeasurementType, UserMeasurementType
 
         try:
             # This was the original problematic query
@@ -161,7 +180,7 @@ async def test_original_sqlalchemy_query(user_id):
                 .where(
                     and_(
                         UserMeasurementType.user_id == user_id,
-                        UserMeasurementType.is_active == True
+                        UserMeasurementType.is_active == True,
                     )
                 )
                 .join(MeasurementType)
@@ -192,15 +211,15 @@ async def test_original_sqlalchemy_query(user_id):
 
     await DatabaseManager.execute_with_session(_test_original)
 
+
 async def check_data_types_in_database(user_id):
     """Check actual data types in the database for debugging."""
-    print(f"\n🔍 Checking actual data types in database...")
+    print("\n🔍 Checking actual data types in database...")
 
     async def _check_types(session):
         # Check what type the user_id actually is
         result = await session.execute(
-            text("SELECT pg_typeof(:user_id) as user_id_type"),
-            {"user_id": user_id}
+            text("SELECT pg_typeof(:user_id) as user_id_type"), {"user_id": user_id}
         )
         row = result.fetchone()
         print(f"   user_id parameter type: {row.user_id_type}")
@@ -224,9 +243,12 @@ async def check_data_types_in_database(user_id):
         )
         rows = result.fetchall()
         for row in rows:
-            print(f"   is_active value: {row.is_active} (type: {row.bool_type}) - count: {row.count}")
+            print(
+                f"   is_active value: {row.is_active} (type: {row.bool_type}) - count: {row.count}"
+            )
 
     await DatabaseManager.execute_with_session(_check_types)
+
 
 async def main():
     """Main test execution."""
@@ -242,31 +264,31 @@ async def main():
         user_id, weight_type_id, waist_type_id = await setup_bot_test_data()
 
         # Test 1: Reproduce the error with no user measurement types (empty result)
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("TEST 1: Empty user_measurement_types (typical first-time user)")
-        print("="*60)
+        print("=" * 60)
         await reproduce_handle_add_measurement_error(user_id)
         await test_raw_sql_equivalent()
         await check_data_types_in_database(user_id)
         await test_original_sqlalchemy_query(user_id)
 
         # Test 2: Add a measurement type and test again
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("TEST 2: After adding measurement type")
-        print("="*60)
+        print("=" * 60)
         await reproduce_add_measurement_type_scenario(user_id, weight_type_id)
         await reproduce_handle_add_measurement_error(user_id)
 
         # Test 3: Add another and test with multiple records
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("TEST 3: Multiple measurement types")
-        print("="*60)
+        print("=" * 60)
         await reproduce_add_measurement_type_scenario(user_id, waist_type_id)
         await reproduce_handle_add_measurement_error(user_id)
 
-        print("\n" + "="*60)
+        print("\n" + "=" * 60)
         print("🎯 ANALYSIS COMPLETE")
-        print("="*60)
+        print("=" * 60)
         print("Check the error messages above to identify:")
         print("1. Which specific query is failing")
         print("2. What data types are being compared")
@@ -276,7 +298,9 @@ async def main():
     except Exception as e:
         print(f"\n💥 UNEXPECTED ERROR: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

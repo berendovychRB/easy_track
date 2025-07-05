@@ -4,7 +4,6 @@ Simple test script to verify the SQLAlchemy query fix.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -12,12 +11,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from dotenv import load_dotenv
-from easy_track.models import User, MeasurementType, UserMeasurementType
+
 from easy_track.database import DatabaseManager, init_db
-from easy_track.repositories import UserMeasurementTypeRepository, MeasurementTypeRepository, UserRepository
+from easy_track.repositories import (
+    MeasurementTypeRepository,
+    UserMeasurementTypeRepository,
+    UserRepository,
+)
 
 # Load environment variables
 load_dotenv()
+
 
 async def test_fix():
     """Test the fix for the SQLAlchemy boolean error."""
@@ -36,7 +40,7 @@ async def test_fix():
                 telegram_id=987654321,
                 username="testuser2",
                 first_name="Test",
-                last_name="User"
+                last_name="User",
             )
 
             # Create measurement types
@@ -72,10 +76,12 @@ async def test_fix():
     except Exception as e:
         print(f"❌ Test failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
 
     return True
+
 
 if __name__ == "__main__":
     success = asyncio.run(test_fix())

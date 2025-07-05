@@ -5,9 +5,10 @@ This module contains tests to verify that the package structure is correct
 and all modules can be imported properly.
 """
 
-import pytest
 import sys
 from pathlib import Path
+
+import pytest
 
 # Ensure we can import from the package
 project_root = Path(__file__).parent.parent
@@ -21,12 +22,19 @@ class TestPackageStructure:
     def test_package_import(self):
         """Test that the main package can be imported."""
         import easy_track
-        assert hasattr(easy_track, '__version__')
+
+        assert hasattr(easy_track, "__version__")
         assert easy_track.__version__ == "1.0.0"
 
     def test_models_import(self):
         """Test that models can be imported."""
-        from easy_track.models import Base, User, MeasurementType, UserMeasurementType, Measurement
+        from easy_track.models import (
+            Base,
+            Measurement,
+            MeasurementType,
+            User,
+            UserMeasurementType,
+        )
 
         # Verify all model classes exist
         assert Base is not None
@@ -37,7 +45,7 @@ class TestPackageStructure:
 
     def test_database_import(self):
         """Test that database module can be imported."""
-        from easy_track.database import DatabaseManager, init_db, close_db
+        from easy_track.database import DatabaseManager, close_db, init_db
 
         assert DatabaseManager is not None
         assert init_db is not None
@@ -46,10 +54,10 @@ class TestPackageStructure:
     def test_repositories_import(self):
         """Test that repository classes can be imported."""
         from easy_track.repositories import (
-            UserRepository,
+            MeasurementRepository,
             MeasurementTypeRepository,
             UserMeasurementTypeRepository,
-            MeasurementRepository
+            UserRepository,
         )
 
         assert UserRepository is not None
@@ -61,14 +69,14 @@ class TestPackageStructure:
         """Test that bot module can be imported."""
         from easy_track import bot
 
-        assert hasattr(bot, 'main')
+        assert hasattr(bot, "main")
         assert callable(bot.main)
 
     def test_main_import(self):
         """Test that main module can be imported."""
         from easy_track import main
 
-        assert hasattr(main, 'setup_logging')
+        assert hasattr(main, "setup_logging")
         assert callable(main.setup_logging)
 
     def test_package_exports(self):
@@ -77,10 +85,18 @@ class TestPackageStructure:
 
         # Test that key components are exported at package level
         expected_exports = [
-            'Base', 'User', 'MeasurementType', 'UserMeasurementType', 'Measurement',
-            'DatabaseManager', 'init_db', 'close_db',
-            'UserRepository', 'MeasurementTypeRepository',
-            'UserMeasurementTypeRepository', 'MeasurementRepository'
+            "Base",
+            "User",
+            "MeasurementType",
+            "UserMeasurementType",
+            "Measurement",
+            "DatabaseManager",
+            "init_db",
+            "close_db",
+            "UserRepository",
+            "MeasurementTypeRepository",
+            "UserMeasurementTypeRepository",
+            "MeasurementRepository",
         ]
 
         for export in expected_exports:
@@ -88,37 +104,42 @@ class TestPackageStructure:
 
     def test_model_relationships(self):
         """Test that model relationships are properly defined."""
-        from easy_track.models import User, MeasurementType, UserMeasurementType, Measurement
+        from easy_track.models import (
+            Measurement,
+            MeasurementType,
+            User,
+            UserMeasurementType,
+        )
 
         # Test User model
         user = User()
-        assert hasattr(user, 'user_measurement_types')
-        assert hasattr(user, 'measurements')
+        assert hasattr(user, "user_measurement_types")
+        assert hasattr(user, "measurements")
 
         # Test MeasurementType model
         measurement_type = MeasurementType()
-        assert hasattr(measurement_type, 'user_measurement_types')
-        assert hasattr(measurement_type, 'measurements')
+        assert hasattr(measurement_type, "user_measurement_types")
+        assert hasattr(measurement_type, "measurements")
 
         # Test UserMeasurementType model
         user_measurement_type = UserMeasurementType()
-        assert hasattr(user_measurement_type, 'user')
-        assert hasattr(user_measurement_type, 'measurement_type')
+        assert hasattr(user_measurement_type, "user")
+        assert hasattr(user_measurement_type, "measurement_type")
 
         # Test Measurement model
         measurement = Measurement()
-        assert hasattr(measurement, 'user')
-        assert hasattr(measurement, 'measurement_type')
+        assert hasattr(measurement, "user")
+        assert hasattr(measurement, "measurement_type")
 
     def test_repository_methods(self):
         """Test that repository classes have expected methods."""
         from easy_track.repositories import UserRepository
 
         # Test that static methods exist
-        assert hasattr(UserRepository, 'create_user')
-        assert hasattr(UserRepository, 'get_user_by_telegram_id')
-        assert hasattr(UserRepository, 'get_user_by_id')
-        assert hasattr(UserRepository, 'update_user')
+        assert hasattr(UserRepository, "create_user")
+        assert hasattr(UserRepository, "get_user_by_telegram_id")
+        assert hasattr(UserRepository, "get_user_by_id")
+        assert hasattr(UserRepository, "update_user")
 
         # Verify they are static methods
         assert callable(UserRepository.create_user)
@@ -128,8 +149,8 @@ class TestPackageStructure:
         """Test that DatabaseManager has expected methods."""
         from easy_track.database import DatabaseManager
 
-        assert hasattr(DatabaseManager, 'get_session')
-        assert hasattr(DatabaseManager, 'execute_with_session')
+        assert hasattr(DatabaseManager, "get_session")
+        assert hasattr(DatabaseManager, "execute_with_session")
         assert callable(DatabaseManager.get_session)
         assert callable(DatabaseManager.execute_with_session)
 
@@ -137,13 +158,15 @@ class TestPackageStructure:
         """Test package metadata is correctly set."""
         import easy_track
 
-        assert hasattr(easy_track, '__author__')
-        assert hasattr(easy_track, '__email__')
-        assert hasattr(easy_track, '__description__')
+        assert hasattr(easy_track, "__author__")
+        assert hasattr(easy_track, "__email__")
+        assert hasattr(easy_track, "__description__")
 
         assert easy_track.__author__ == "EasyTrack Team"
         assert easy_track.__email__ == "contact@easytrack.bot"
-        assert easy_track.__description__ == "Telegram bot for tracking body measurements"
+        assert (
+            easy_track.__description__ == "Telegram bot for tracking body measurements"
+        )
 
 
 class TestFileStructure:
@@ -170,7 +193,7 @@ class TestFileStructure:
             "README.md",
             ".env.example",
             ".gitignore",
-            ".dockerignore"
+            ".dockerignore",
         ]
 
         for file_path in required_files:
@@ -186,12 +209,14 @@ class TestFileStructure:
             "src/easy_track",
             "alembic",
             "alembic/versions",
-            "tests"
+            "tests",
         ]
 
         for dir_path in required_dirs:
             full_path = project_root / dir_path
-            assert full_path.exists() and full_path.is_dir(), f"Required directory {dir_path} does not exist"
+            assert (
+                full_path.exists() and full_path.is_dir()
+            ), f"Required directory {dir_path} does not exist"
 
 
 if __name__ == "__main__":

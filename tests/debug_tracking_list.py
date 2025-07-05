@@ -3,18 +3,19 @@
 Debug script to investigate custom measurement type tracking list visibility issues.
 This script checks if custom types appear in the user's tracking list.
 """
+
 import asyncio
-import sys
 import os
+import sys
 
 # Add the src directory to the path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
 
 from easy_track.database import DatabaseManager, init_db
 from easy_track.repositories import (
-    UserRepository,
     MeasurementTypeRepository,
     UserMeasurementTypeRepository,
+    UserRepository,
 )
 
 
@@ -43,11 +44,13 @@ async def debug_tracking_list():
         print(f"✅ Found user: {user.first_name} {user.last_name} (ID: {user.id})")
 
         # Step 2: Get ALL user measurement types (including inactive)
-        print(f"\n2️⃣ Getting ALL user measurement type records...")
+        print("\n2️⃣ Getting ALL user measurement type records...")
 
         async def get_all_user_measurement_types(session):
             from sqlalchemy import select
+
             from easy_track.models import UserMeasurementType
+
             result = await session.execute(
                 select(UserMeasurementType)
                 .where(UserMeasurementType.user_id == user.id)
@@ -59,7 +62,9 @@ async def debug_tracking_list():
         async def get_all_user_measurement_types_fixed(session):
             from sqlalchemy import select
             from sqlalchemy.orm import selectinload
+
             from easy_track.models import UserMeasurementType
+
             result = await session.execute(
                 select(UserMeasurementType)
                 .where(UserMeasurementType.user_id == user.id)
@@ -67,24 +72,32 @@ async def debug_tracking_list():
             )
             return result.scalars().all()
 
-        all_user_types = await DatabaseManager.execute_with_session(get_all_user_measurement_types_fixed)
+        all_user_types = await DatabaseManager.execute_with_session(
+            get_all_user_measurement_types_fixed
+        )
         print(f"✅ Found {len(all_user_types)} user measurement type records")
 
         for ut in all_user_types:
             icon = "🔧" if ut.measurement_type.is_custom else "📏"
             status = "✅ Active" if ut.is_active else "❌ Inactive"
-            print(f"   {icon} {ut.measurement_type.name} ({ut.measurement_type.unit}) - {status}")
+            print(
+                f"   {icon} {ut.measurement_type.name} ({ut.measurement_type.unit}) - {status}"
+            )
             print(f"      UserMeasurementType ID: {ut.id}")
             print(f"      MeasurementType ID: {ut.measurement_type_id}")
             print(f"      Created: {ut.created_at}")
 
         # Step 3: Get active user measurement types (what shows in tracking list)
-        print(f"\n3️⃣ Getting ACTIVE user measurement types (tracking list)...")
+        print("\n3️⃣ Getting ACTIVE user measurement types (tracking list)...")
 
         async def get_active_tracking_types(session):
-            return await UserMeasurementTypeRepository.get_user_measurement_types(session, user.id)
+            return await UserMeasurementTypeRepository.get_user_measurement_types(
+                session, user.id
+            )
 
-        active_types = await DatabaseManager.execute_with_session(get_active_tracking_types)
+        active_types = await DatabaseManager.execute_with_session(
+            get_active_tracking_types
+        )
         print(f"✅ Active tracking types: {len(active_types)}")
 
         custom_active = [ut for ut in active_types if ut.measurement_type.is_custom]
@@ -98,11 +111,12 @@ async def debug_tracking_list():
             print(f"   {icon} {ut.measurement_type.name} ({ut.measurement_type.unit})")
 
         # Step 4: Check the repository method logic
-        print(f"\n4️⃣ Testing repository method directly...")
+        print("\n4️⃣ Testing repository method directly...")
 
         async def test_repository_method(session):
             from sqlalchemy import select
             from sqlalchemy.orm import selectinload
+
             from easy_track.models import UserMeasurementType
 
             # Test the exact query from the repository
@@ -131,7 +145,7 @@ async def debug_tracking_list():
             print(f"   {icon} {ut.measurement_type.name} ({ut.measurement_type.unit})")
 
         # Step 5: Check if there's a difference between all records and active ones
-        print(f"\n5️⃣ Analyzing discrepancies...")
+        print("\n5️⃣ Analyzing discrepancies...")
 
         all_ids = {ut.id for ut in all_user_types}
         active_ids = {ut.id for ut in active_types}
@@ -147,13 +161,15 @@ async def debug_tracking_list():
             print("✅ All user measurement types are active")
 
         # Step 6: Simulate the "Manage Types" display logic
-        print(f"\n6️⃣ Simulating Manage Types display...")
+        print("\n6️⃣ Simulating Manage Types display...")
 
         # This is what would show in the bot's "Manage Types" menu
         tracking_custom = [ut for ut in active_types if ut.measurement_type.is_custom]
-        tracking_system = [ut for ut in active_types if not ut.measurement_type.is_custom]
+        tracking_system = [
+            ut for ut in active_types if not ut.measurement_type.is_custom
+        ]
 
-        print(f"   Types that SHOULD appear in tracking list:")
+        print("   Types that SHOULD appear in tracking list:")
         print(f"   📏 System types: {len(tracking_system)}")
         print(f"   🔧 Custom types: {len(tracking_custom)}")
 
@@ -162,16 +178,20 @@ async def debug_tracking_list():
         else:
             print("   ✅ Custom types should appear in tracking list:")
             for ut in tracking_custom:
-                print(f"      🔧 {ut.measurement_type.name} ({ut.measurement_type.unit})")
+                print(
+                    f"      🔧 {ut.measurement_type.name} ({ut.measurement_type.unit})"
+                )
 
         # Step 7: Check for potential issues
-        print(f"\n7️⃣ Checking for potential issues...")
+        print("\n7️⃣ Checking for potential issues...")
 
         issues_found = False
 
         # Check if user has any custom types at all
         user_custom_types = await DatabaseManager.execute_with_session(
-            lambda session: MeasurementTypeRepository.get_user_custom_types(session, user.id)
+            lambda session: MeasurementTypeRepository.get_user_custom_types(
+                session, user.id
+            )
         )
 
         if len(user_custom_types) == 0:
@@ -181,31 +201,41 @@ async def debug_tracking_list():
             print(f"✅ User has {len(user_custom_types)} custom types")
 
         # Check if custom types are in user_measurement_types table
-        custom_in_tracking_table = [ut for ut in all_user_types if ut.measurement_type.is_custom]
+        custom_in_tracking_table = [
+            ut for ut in all_user_types if ut.measurement_type.is_custom
+        ]
 
         if len(custom_in_tracking_table) == 0:
             print("❌ ISSUE: Custom types not found in user_measurement_types table!")
             issues_found = True
         elif len(custom_in_tracking_table) != len(user_custom_types):
-            print(f"⚠️  PARTIAL ISSUE: Only {len(custom_in_tracking_table)} of {len(user_custom_types)} custom types in tracking table")
+            print(
+                f"⚠️  PARTIAL ISSUE: Only {len(custom_in_tracking_table)} of {len(user_custom_types)} custom types in tracking table"
+            )
             issues_found = True
         else:
-            print(f"✅ All {len(user_custom_types)} custom types found in tracking table")
+            print(
+                f"✅ All {len(user_custom_types)} custom types found in tracking table"
+            )
 
         # Check if custom types in tracking table are active
-        active_custom_in_tracking = [ut for ut in custom_in_tracking_table if ut.is_active]
+        active_custom_in_tracking = [
+            ut for ut in custom_in_tracking_table if ut.is_active
+        ]
 
         if len(active_custom_in_tracking) != len(custom_in_tracking_table):
-            print(f"❌ ISSUE: Only {len(active_custom_in_tracking)} of {len(custom_in_tracking_table)} custom types are active!")
+            print(
+                f"❌ ISSUE: Only {len(active_custom_in_tracking)} of {len(custom_in_tracking_table)} custom types are active!"
+            )
             issues_found = True
         else:
-            print(f"✅ All custom types in tracking table are active")
+            print("✅ All custom types in tracking table are active")
 
         if not issues_found:
             print("✅ No obvious issues found - custom types should be visible!")
 
         # Step 8: Final summary
-        print(f"\n8️⃣ Final Summary...")
+        print("\n8️⃣ Final Summary...")
         print(f"   User's custom measurement types: {len(user_custom_types)}")
         print(f"   Custom types in tracking table: {len(custom_in_tracking_table)}")
         print(f"   Active custom types in tracking: {len(active_custom_in_tracking)}")
@@ -220,6 +250,7 @@ async def debug_tracking_list():
     except Exception as e:
         print(f"\n❌ Debug failed with error: {e}")
         import traceback
+
         traceback.print_exc()
 
 

@@ -7,7 +7,6 @@ of the SQLAlchemy boolean type mismatch error.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -15,14 +14,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from dotenv import load_dotenv
-from sqlalchemy import text, inspect
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import text
 
-from easy_track.database import DatabaseManager, init_db, engine
-from easy_track.models import User, MeasurementType, UserMeasurementType, Measurement
+from easy_track.database import DatabaseManager, init_db
+from easy_track.models import UserMeasurementType
 
 # Load environment variables
 load_dotenv()
+
 
 async def inspect_database_schema():
     """Comprehensive database schema inspection."""
@@ -39,12 +38,14 @@ async def inspect_database_schema():
             print("-" * 30)
 
             # Get all tables
-            tables_result = await session.execute(text("""
+            tables_result = await session.execute(
+                text("""
                 SELECT table_name
                 FROM information_schema.tables
                 WHERE table_schema = 'public'
                 ORDER BY table_name
-            """))
+            """)
+            )
             tables = [row[0] for row in tables_result.fetchall()]
             print(f"Found tables: {', '.join(tables)}")
 
@@ -54,7 +55,8 @@ async def inspect_database_schema():
                 print("-" * 20)
 
                 # Get column information
-                columns_result = await session.execute(text(f"""
+                columns_result = await session.execute(
+                    text(f"""
                     SELECT
                         column_name,
                         data_type,
@@ -66,21 +68,35 @@ async def inspect_database_schema():
                     FROM information_schema.columns
                     WHERE table_name = '{table_name}'
                     ORDER BY ordinal_position
-                """))
+                """)
+                )
 
                 columns = columns_result.fetchall()
                 for col in columns:
                     nullable = "NULL" if col.is_nullable == "YES" else "NOT NULL"
-                    default = f" DEFAULT {col.column_default}" if col.column_default else ""
-                    length = f"({col.character_maximum_length})" if col.character_maximum_length else ""
-                    precision = f"({col.numeric_precision},{col.numeric_scale})" if col.numeric_precision else ""
+                    default = (
+                        f" DEFAULT {col.column_default}" if col.column_default else ""
+                    )
+                    length = (
+                        f"({col.character_maximum_length})"
+                        if col.character_maximum_length
+                        else ""
+                    )
+                    precision = (
+                        f"({col.numeric_precision},{col.numeric_scale})"
+                        if col.numeric_precision
+                        else ""
+                    )
 
-                    print(f"  {col.column_name}: {col.data_type}{length}{precision} {nullable}{default}")
+                    print(
+                        f"  {col.column_name}: {col.data_type}{length}{precision} {nullable}{default}"
+                    )
 
             print("\n🔗 Foreign Key Constraints:")
             print("-" * 30)
 
-            fk_result = await session.execute(text("""
+            fk_result = await session.execute(
+                text("""
                 SELECT
                     tc.table_name,
                     kcu.column_name,
@@ -97,16 +113,20 @@ async def inspect_database_schema():
                       AND ccu.table_schema = tc.table_schema
                 WHERE tc.constraint_type = 'FOREIGN KEY'
                 ORDER BY tc.table_name, kcu.column_name
-            """))
+            """)
+            )
 
             fks = fk_result.fetchall()
             for fk in fks:
-                print(f"  {fk.table_name}.{fk.column_name} -> {fk.foreign_table_name}.{fk.foreign_column_name}")
+                print(
+                    f"  {fk.table_name}.{fk.column_name} -> {fk.foreign_table_name}.{fk.foreign_column_name}"
+                )
 
             print("\n📋 Indexes:")
             print("-" * 30)
 
-            index_result = await session.execute(text("""
+            index_result = await session.execute(
+                text("""
                 SELECT
                     schemaname,
                     tablename,
@@ -115,7 +135,8 @@ async def inspect_database_schema():
                 FROM pg_indexes
                 WHERE schemaname = 'public'
                 ORDER BY tablename, indexname
-            """))
+            """)
+            )
 
             indexes = index_result.fetchall()
             for idx in indexes:
@@ -127,7 +148,9 @@ async def inspect_database_schema():
     except Exception as e:
         print(f"❌ Schema inspection failed: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 async def test_problematic_queries():
     """Test the exact queries that are causing issues."""
@@ -139,28 +162,34 @@ async def test_problematic_queries():
 
         # Test 1: Basic user_measurement_types query
         try:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text("""
                 SELECT id, user_id, measurement_type_id, is_active, created_at, updated_at
                 FROM user_measurement_types
                 LIMIT 5
-            """))
+            """)
+            )
             rows = result.fetchall()
             print(f"✅ Basic query: {len(rows)} rows")
 
             if rows:
                 for row in rows[:2]:
-                    print(f"   Row: id={row.id}, user_id={row.user_id}, active={row.is_active} (type: {type(row.is_active)})")
+                    print(
+                        f"   Row: id={row.id}, user_id={row.user_id}, active={row.is_active} (type: {type(row.is_active)})"
+                    )
         except Exception as e:
             print(f"❌ Basic query failed: {e}")
 
         # Test 2: Boolean filtering
         try:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text("""
                 SELECT id, user_id, measurement_type_id, is_active
                 FROM user_measurement_types
                 WHERE is_active = true
                 LIMIT 5
-            """))
+            """)
+            )
             rows = result.fetchall()
             print(f"✅ Boolean filter (true): {len(rows)} rows")
         except Exception as e:
@@ -168,22 +197,27 @@ async def test_problematic_queries():
 
         # Test 3: Check for any non-boolean values in is_active
         try:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text("""
                 SELECT is_active, COUNT(*)
                 FROM user_measurement_types
                 GROUP BY is_active
                 ORDER BY is_active
-            """))
+            """)
+            )
             rows = result.fetchall()
-            print(f"✅ is_active value distribution:")
+            print("✅ is_active value distribution:")
             for row in rows:
-                print(f"   {row.is_active} ({type(row.is_active).__name__}): {row.count} records")
+                print(
+                    f"   {row.is_active} ({type(row.is_active).__name__}): {row.count} records"
+                )
         except Exception as e:
             print(f"❌ Value distribution check failed: {e}")
 
         # Test 4: Check for any weird data types
         try:
-            result = await session.execute(text("""
+            result = await session.execute(
+                text("""
                 SELECT
                     column_name,
                     data_type,
@@ -192,10 +226,11 @@ async def test_problematic_queries():
                 WHERE table_name = 'user_measurement_types'
                 AND column_name = 'is_active'
                 LIMIT 1
-            """))
+            """)
+            )
             row = result.fetchone()
             if row:
-                print(f"✅ is_active column type check:")
+                print("✅ is_active column type check:")
                 print(f"   Schema type: {row.data_type}")
                 print(f"   Actual type: {row.actual_type}")
         except Exception as e:
@@ -206,14 +241,16 @@ async def test_problematic_queries():
         # Test 5: Simple SQLAlchemy query
         try:
             from sqlalchemy import select
+
             result = await session.execute(
-                select(UserMeasurementType.id, UserMeasurementType.is_active)
-                .limit(5)
+                select(UserMeasurementType.id, UserMeasurementType.is_active).limit(5)
             )
             rows = result.fetchall()
             print(f"✅ Simple SQLAlchemy: {len(rows)} rows")
             for row in rows[:2]:
-                print(f"   Row: id={row.id}, active={row.is_active} (type: {type(row.is_active)})")
+                print(
+                    f"   Row: id={row.id}, active={row.is_active} (type: {type(row.is_active)})"
+                )
         except Exception as e:
             print(f"❌ Simple SQLAlchemy failed: {e}")
 
@@ -228,7 +265,7 @@ async def test_problematic_queries():
             print(f"✅ SQLAlchemy boolean filter: {len(rows)} rows")
         except Exception as e:
             print(f"❌ SQLAlchemy boolean filter failed: {e}")
-            print(f"   Error details: {str(e)}")
+            print(f"   Error details: {e!s}")
 
         # Test 7: Alternative boolean comparisons
         try:
@@ -254,9 +291,10 @@ async def test_problematic_queries():
             print(f"✅ Multiple where clauses: {len(rows)} rows")
         except Exception as e:
             print(f"❌ Multiple where clauses failed: {e}")
-            print(f"   This might be our culprit: {str(e)}")
+            print(f"   This might be our culprit: {e!s}")
 
     await DatabaseManager.execute_with_session(run_query_tests)
+
 
 async def check_database_version():
     """Check PostgreSQL and asyncpg versions."""
@@ -271,10 +309,12 @@ async def check_database_version():
 
         # Check asyncpg version
         import asyncpg
+
         print(f"asyncpg: {asyncpg.__version__}")
 
         # Check SQLAlchemy version
         import sqlalchemy
+
         print(f"SQLAlchemy: {sqlalchemy.__version__}")
 
         # Check database encoding
@@ -288,6 +328,7 @@ async def check_database_version():
         print(f"LC_COLLATE: {collate}")
 
     await DatabaseManager.execute_with_session(version_check)
+
 
 async def create_minimal_test_data():
     """Create minimal test data to reproduce the issue."""
@@ -306,7 +347,8 @@ async def create_minimal_test_data():
         print("Creating test data...")
 
         # Create tables manually if they don't exist
-        await session.execute(text("""
+        await session.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 telegram_id BIGINT UNIQUE NOT NULL,
@@ -317,9 +359,11 @@ async def create_minimal_test_data():
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             )
-        """))
+        """)
+        )
 
-        await session.execute(text("""
+        await session.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS measurement_types (
                 id SERIAL PRIMARY KEY,
                 name VARCHAR(100) UNIQUE NOT NULL,
@@ -328,9 +372,11 @@ async def create_minimal_test_data():
                 is_active BOOLEAN NOT NULL DEFAULT true,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
             )
-        """))
+        """)
+        )
 
-        await session.execute(text("""
+        await session.execute(
+            text("""
             CREATE TABLE IF NOT EXISTS user_measurement_types (
                 id SERIAL PRIMARY KEY,
                 user_id INTEGER NOT NULL REFERENCES users(id),
@@ -340,36 +386,44 @@ async def create_minimal_test_data():
                 updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
                 UNIQUE(user_id, measurement_type_id)
             )
-        """))
+        """)
+        )
 
         # Insert test data
-        await session.execute(text("""
+        await session.execute(
+            text("""
             INSERT INTO users (telegram_id, username, first_name, last_name)
             VALUES (123456789, 'testuser', 'Test', 'User')
             ON CONFLICT (telegram_id) DO NOTHING
-        """))
+        """)
+        )
 
-        await session.execute(text("""
+        await session.execute(
+            text("""
             INSERT INTO measurement_types (name, unit, description)
             VALUES
                 ('Weight', 'kg', 'Body weight'),
                 ('Height', 'cm', 'Body height')
             ON CONFLICT (name) DO NOTHING
-        """))
+        """)
+        )
 
-        await session.execute(text("""
+        await session.execute(
+            text("""
             INSERT INTO user_measurement_types (user_id, measurement_type_id, is_active)
             SELECT u.id, mt.id, true
             FROM users u, measurement_types mt
             WHERE u.telegram_id = 123456789
             AND mt.name IN ('Weight', 'Height')
             ON CONFLICT (user_id, measurement_type_id) DO NOTHING
-        """))
+        """)
+        )
 
         await session.commit()
         print("✅ Test data created successfully")
 
     await DatabaseManager.execute_with_session(create_data)
+
 
 async def main():
     """Main inspection routine."""
@@ -393,7 +447,9 @@ async def main():
     except Exception as e:
         print(f"\n❌ Inspection failed: {e}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     asyncio.run(main())

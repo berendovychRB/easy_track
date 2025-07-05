@@ -1,15 +1,18 @@
 import logging
-from datetime import datetime, timedelta, time
-from typing import List, Optional, Dict
-from sqlalchemy import select, desc, func
+from datetime import datetime, time, timedelta
+
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from .models import (
-    User,
-    MeasurementType,
-    UserMeasurementType,
+    CoachNotificationType,
     Measurement,
+    MeasurementType,
     NotificationSchedule,
+    User,
+    UserMeasurementType,
+    UserRole,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,7 +45,7 @@ class UserRepository:
     @staticmethod
     async def get_user_by_telegram_id(
         session: AsyncSession, telegram_id: int
-    ) -> Optional[User]:
+    ) -> User | None:
         """Get user by Telegram ID."""
         result = await session.execute(
             select(User).where(User.telegram_id == telegram_id)
@@ -50,15 +53,13 @@ class UserRepository:
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def get_user_by_id(session: AsyncSession, user_id: int) -> Optional[User]:
+    async def get_user_by_id(session: AsyncSession, user_id: int) -> User | None:
         """Get user by ID."""
         result = await session.execute(select(User).where(User.id == user_id))
         return result.scalar_one_or_none()
 
     @staticmethod
-    async def update_user(
-        session: AsyncSession, user_id: int, **kwargs
-    ) -> Optional[User]:
+    async def update_user(session: AsyncSession, user_id: int, **kwargs) -> User | None:
         """Update user information."""
         user = await UserRepository.get_user_by_id(session, user_id)
         if user:
@@ -71,7 +72,7 @@ class UserRepository:
     @staticmethod
     async def update_user_language(
         session: AsyncSession, telegram_id: int, language: str
-    ) -> Optional[User]:
+    ) -> User | None:
         """Update user's language preference."""
         user = await UserRepository.get_user_by_telegram_id(session, telegram_id)
         if user:
@@ -85,12 +86,96 @@ class UserRepository:
         user = await UserRepository.get_user_by_telegram_id(session, telegram_id)
         return user.language if user else "en"
 
+    @staticmethod
+    async def update_user_role(
+        session: AsyncSession, user_id: int, role: UserRole
+    ) -> User:
+        """Update user role."""
+        user = await UserRepository.get_user_by_id(session, user_id)
+        if user:
+            user.user_role = role
+            await session.flush()
+        return user
+
+    @staticmethod
+    async def find_user_by_telegram_id_or_username(
+        session: AsyncSession, identifier: str
+    ) -> User | None:
+        """Find user by telegram ID or username."""
+        try:
+            # Try to parse as telegram ID (numeric)
+            if identifier.isdigit():
+                telegram_id = int(identifier)
+                return await UserRepository.get_user_by_telegram_id(
+                    session, telegram_id
+                )
+
+            # Remove @ if present
+            username = identifier.lstrip("@")
+
+            # Search by username
+            result = await session.execute(
+                select(User).where(User.username == username)
+            )
+            return result.scalar_one_or_none()
+
+        except Exception as e:
+            logger.error(f"Error finding user by identifier '{identifier}': {e}")
+            return None
+
+    @staticmethod
+    async def is_user_coach(session: AsyncSession, user_id: int) -> bool:
+        """Check if user is a coach."""
+        user = await UserRepository.get_user_by_id(session, user_id)
+        return user and user.user_role in [UserRole.COACH, UserRole.BOTH]
+
+    @staticmethod
+    async def get_users_by_role(session: AsyncSession, role: UserRole) -> list[User]:
+        """Get users by role."""
+        result = await session.execute(
+            select(User)
+            .where(User.user_role == role)
+            .where(User.is_active.is_(True))
+            .order_by(User.first_name, User.username)
+        )
+        return result.scalars().all()
+
+    @staticmethod
+    async def find_user_by_username(
+        session: AsyncSession, username: str
+    ) -> User | None:
+        """Find user by username."""
+        if not username:
+            return None
+
+        # Remove @ symbol if present
+        username = username.lstrip("@")
+
+        result = await session.execute(
+            select(User)
+            .where(User.username == username)
+            .where(User.is_active.is_(True))
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
+    async def get_user_role(session: AsyncSession, user_id: int) -> UserRole | None:
+        """Get user's role."""
+        user = await UserRepository.get_user_by_id(session, user_id)
+        return UserRole(user.user_role) if user else None
+
+    @staticmethod
+    async def is_user_athlete(session: AsyncSession, user_id: int) -> bool:
+        """Check if user is an athlete."""
+        role = await UserRepository.get_user_role(session, user_id)
+        return role in [UserRole.ATHLETE, UserRole.BOTH]
+
 
 class MeasurementTypeRepository:
     """Repository for MeasurementType operations."""
 
     @staticmethod
-    async def get_all_active_types(session: AsyncSession) -> List[MeasurementType]:
+    async def get_all_active_types(session: AsyncSession) -> list[MeasurementType]:
         """Get all active measurement types."""
         result = await session.execute(
             select(MeasurementType)
@@ -102,7 +187,7 @@ class MeasurementTypeRepository:
     @staticmethod
     async def get_type_by_id(
         session: AsyncSession, type_id: int
-    ) -> Optional[MeasurementType]:
+    ) -> MeasurementType | None:
         """Get measurement type by ID."""
         result = await session.execute(
             select(MeasurementType).where(MeasurementType.id == type_id)
@@ -112,7 +197,7 @@ class MeasurementTypeRepository:
     @staticmethod
     async def get_type_by_name(
         session: AsyncSession, name: str
-    ) -> Optional[MeasurementType]:
+    ) -> MeasurementType | None:
         """Get measurement type by name."""
         result = await session.execute(
             select(MeasurementType).where(MeasurementType.name == name)
@@ -154,7 +239,7 @@ class MeasurementTypeRepository:
     @staticmethod
     async def get_user_custom_types(
         session: AsyncSession, user_id: int
-    ) -> List[MeasurementType]:
+    ) -> list[MeasurementType]:
         """Get all custom measurement types created by a specific user."""
         result = await session.execute(
             select(MeasurementType)
@@ -167,7 +252,7 @@ class MeasurementTypeRepository:
     @staticmethod
     async def get_available_types_for_user(
         session: AsyncSession, user_id: int
-    ) -> List[MeasurementType]:
+    ) -> list[MeasurementType]:
         """Get all measurement types available to a user (system + their custom types)."""
         result = await session.execute(
             select(MeasurementType)
@@ -221,7 +306,7 @@ class UserMeasurementTypeRepository:
     @staticmethod
     async def get_user_measurement_types(
         session: AsyncSession, user_id: int
-    ) -> List[UserMeasurementType]:
+    ) -> list[UserMeasurementType]:
         """Get all active measurement types for a user."""
         try:
             logger.debug(f"Fetching measurement types for user {user_id}")
@@ -323,6 +408,10 @@ class MeasurementRepository:
         )
         session.add(measurement)
         await session.flush()
+
+        # Trigger coach notifications
+        await MeasurementRepository._notify_coaches_of_measurement(session, measurement)
+
         return measurement
 
     @staticmethod
@@ -331,7 +420,7 @@ class MeasurementRepository:
         user_id: int,
         measurement_type_id: int = None,
         limit: int = None,
-    ) -> List[Measurement]:
+    ) -> list[Measurement]:
         """Get measurements for a user, optionally filtered by type."""
         try:
             logger.debug(
@@ -367,7 +456,7 @@ class MeasurementRepository:
     @staticmethod
     async def get_latest_measurement(
         session: AsyncSession, user_id: int, measurement_type_id: int
-    ) -> Optional[Measurement]:
+    ) -> Measurement | None:
         """Get the latest measurement for a specific type."""
         try:
             logger.debug(
@@ -404,7 +493,7 @@ class MeasurementRepository:
     @staticmethod
     async def get_measurement_history(
         session: AsyncSession, user_id: int, measurement_type_id: int, days: int = 30
-    ) -> List[Measurement]:
+    ) -> list[Measurement]:
         """Get measurement history for a specific type within given days."""
         cutoff_date = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         cutoff_date = cutoff_date.replace(day=cutoff_date.day - days)
@@ -445,7 +534,7 @@ class MeasurementRepository:
     @staticmethod
     async def get_measurements_by_date(
         session: AsyncSession, user_id: int, days: int = 30
-    ) -> Dict[str, List[Measurement]]:
+    ) -> dict[str, list[Measurement]]:
         """Get all user measurements grouped by date."""
         try:
             logger.debug(
@@ -485,6 +574,227 @@ class MeasurementRepository:
             logger.error(f"Error fetching measurements by date for user {user_id}: {e}")
             raise
 
+    @staticmethod
+    async def get_athlete_measurements_for_coach(
+        session: AsyncSession,
+        coach_id: int,
+        athlete_id: int,
+        measurement_type_id: int = None,
+        limit: int = None,
+    ) -> list[Measurement]:
+        """Get athlete measurements if coach has permission."""
+        try:
+            # Import here to avoid circular imports
+            from .coach_repository import CoachAthleteRepository
+
+            # Check if coach has permission to view athlete's data
+            has_permission = await CoachAthleteRepository.is_coach_of_athlete(
+                session, coach_id, athlete_id
+            )
+
+            if not has_permission:
+                logger.warning(
+                    f"Coach {coach_id} attempted to access athlete {athlete_id} data without permission"
+                )
+                return []
+
+            # Get measurements using existing method
+            return await MeasurementRepository.get_user_measurements(
+                session, athlete_id, measurement_type_id, limit
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching athlete measurements for coach {coach_id}, athlete {athlete_id}: {e}"
+            )
+            raise
+
+    @staticmethod
+    async def get_recent_measurements_for_coach_athletes(
+        session: AsyncSession, coach_id: int, days: int = 7
+    ) -> list[Measurement]:
+        """Get recent measurements from all coach's athletes."""
+        try:
+            # Import here to avoid circular imports
+            from .coach_repository import CoachAthleteRepository
+
+            logger.debug(
+                f"Fetching recent measurements for coach {coach_id} athletes, last {days} days"
+            )
+
+            # Get all coach's athletes
+            athletes = await CoachAthleteRepository.get_coach_athletes(
+                session, coach_id
+            )
+
+            if not athletes:
+                logger.debug(f"Coach {coach_id} has no athletes")
+                return []
+
+            athlete_ids = [athlete.id for athlete in athletes]
+
+            # Calculate cutoff date
+            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = cutoff_date.replace(hour=0, minute=0, second=0, microsecond=0)
+
+            # Get recent measurements from all athletes
+            result = await session.execute(
+                select(Measurement)
+                .options(
+                    selectinload(Measurement.measurement_type),
+                    selectinload(Measurement.user),
+                )
+                .where(Measurement.user_id.in_(athlete_ids))
+                .where(Measurement.measurement_date >= cutoff_date)
+                .order_by(desc(Measurement.measurement_date))
+            )
+            measurements = result.scalars().all()
+
+            logger.debug(
+                f"Found {len(measurements)} recent measurements for coach {coach_id}"
+            )
+            return measurements
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching recent measurements for coach {coach_id}: {e}"
+            )
+            raise
+
+    @staticmethod
+    async def get_athlete_latest_measurements(
+        session: AsyncSession, coach_id: int, athlete_id: int
+    ) -> list[Measurement]:
+        """Get latest measurements for each type for a specific athlete."""
+        try:
+            # Import here to avoid circular imports
+            from .coach_repository import CoachAthleteRepository
+
+            # Check permission
+            has_permission = await CoachAthleteRepository.is_coach_of_athlete(
+                session, coach_id, athlete_id
+            )
+
+            if not has_permission:
+                logger.warning(
+                    f"Coach {coach_id} attempted to access athlete {athlete_id} data without permission"
+                )
+                return []
+
+            # Get athlete's measurement types
+            athlete_measurement_types = (
+                await UserMeasurementTypeRepository.get_user_measurement_types(
+                    session, athlete_id
+                )
+            )
+
+            latest_measurements = []
+            for umt in athlete_measurement_types:
+                latest = await MeasurementRepository.get_latest_measurement(
+                    session, athlete_id, umt.measurement_type_id
+                )
+                if latest:
+                    latest_measurements.append(latest)
+
+            logger.debug(
+                f"Found {len(latest_measurements)} latest measurements for athlete {athlete_id}"
+            )
+            return latest_measurements
+
+        except Exception as e:
+            logger.error(
+                f"Error fetching latest measurements for athlete {athlete_id}: {e}"
+            )
+            raise
+
+    @staticmethod
+    async def _notify_coaches_of_measurement(
+        session: AsyncSession, measurement: Measurement
+    ):
+        """Notify coaches when athlete adds a measurement."""
+        try:
+            # Import here to avoid circular imports
+            from .coach_notification_repository import CoachNotificationRepository
+            from .coach_repository import CoachAthleteRepository
+            from .i18n import translator
+
+            # Get all coaches for this athlete
+            coaches = await CoachAthleteRepository.get_athlete_coaches(
+                session, measurement.user_id
+            )
+
+            if not coaches:
+                return
+
+            # Get measurement type and user info
+            measurement_type = await session.get(
+                MeasurementType, measurement.measurement_type_id
+            )
+            athlete = await session.get(User, measurement.user_id)
+
+            if not measurement_type or not athlete:
+                logger.error(
+                    f"Could not find measurement type or athlete for measurement {measurement.id}"
+                )
+                return
+
+            athlete_name = athlete.first_name or athlete.username or "Unknown"
+
+            # Queue notifications for each coach
+            for coach in coaches:
+                # Check if coach has this notification type enabled
+                is_enabled = await CoachNotificationRepository.is_notification_enabled(
+                    session, coach.id, CoachNotificationType.ATHLETE_MEASUREMENT_ADDED
+                )
+
+                if is_enabled:
+                    # Get coach's language preference
+                    coach_user = await session.get(User, coach.id)
+                    coach_lang = coach_user.language if coach_user else "en"
+
+                    # Create notification message with proper translation
+                    if measurement.notes:
+                        message = translator.get(
+                            "coach.notifications.measurement_with_notes",
+                            coach_lang,
+                            name=athlete_name,
+                            type=measurement_type.name,
+                            value=measurement.value,
+                            unit=measurement_type.unit,
+                            date=measurement.measurement_date.strftime(
+                                "%Y-%m-%d %H:%M"
+                            ),
+                            notes=measurement.notes,
+                        )
+                    else:
+                        message = translator.get(
+                            "coach.notifications.measurement_notification",
+                            coach_lang,
+                            name=athlete_name,
+                            type=measurement_type.name,
+                            value=measurement.value,
+                            unit=measurement_type.unit,
+                            date=measurement.measurement_date.strftime(
+                                "%Y-%m-%d %H:%M"
+                            ),
+                        )
+
+                    await CoachNotificationRepository.queue_notification(
+                        session=session,
+                        coach_id=coach.id,
+                        athlete_id=measurement.user_id,
+                        notification_type=CoachNotificationType.ATHLETE_MEASUREMENT_ADDED,
+                        message=message,
+                        measurement_id=measurement.id,
+                    )
+                    logger.debug(
+                        f"Queued measurement notification for coach {coach.id}"
+                    )
+
+        except Exception as e:
+            logger.error(f"Error notifying coaches of measurement: {e}")
+            # Don't raise the error to avoid breaking measurement creation
+
 
 class NotificationScheduleRepository:
     """Repository for NotificationSchedule operations."""
@@ -493,7 +803,7 @@ class NotificationScheduleRepository:
     async def create_schedule(
         session: AsyncSession,
         user_id: int,
-        day_of_week: Optional[int],
+        day_of_week: int | None,
         notification_time: time,
         timezone: str = "UTC",
     ) -> NotificationSchedule:
@@ -511,7 +821,7 @@ class NotificationScheduleRepository:
     @staticmethod
     async def get_user_schedules(
         session: AsyncSession, user_id: int
-    ) -> List[NotificationSchedule]:
+    ) -> list[NotificationSchedule]:
         """Get all notification schedules for a user."""
         result = await session.execute(
             select(NotificationSchedule)
@@ -523,7 +833,7 @@ class NotificationScheduleRepository:
     @staticmethod
     async def get_active_user_schedules(
         session: AsyncSession, user_id: int
-    ) -> List[NotificationSchedule]:
+    ) -> list[NotificationSchedule]:
         """Get active notification schedules for a user."""
         result = await session.execute(
             select(NotificationSchedule)
@@ -538,7 +848,7 @@ class NotificationScheduleRepository:
     @staticmethod
     async def get_schedule_by_id(
         session: AsyncSession, schedule_id: int
-    ) -> Optional[NotificationSchedule]:
+    ) -> NotificationSchedule | None:
         """Get notification schedule by ID."""
         result = await session.execute(
             select(NotificationSchedule).where(NotificationSchedule.id == schedule_id)
@@ -574,7 +884,7 @@ class NotificationScheduleRepository:
     @staticmethod
     async def get_all_active_schedules(
         session: AsyncSession,
-    ) -> List[NotificationSchedule]:
+    ) -> list[NotificationSchedule]:
         """Get all active notification schedules for the scheduler."""
         result = await session.execute(
             select(NotificationSchedule)
@@ -589,7 +899,7 @@ class NotificationScheduleRepository:
         session: AsyncSession,
         current_time: time,
         current_day_of_week: int,
-    ) -> List[NotificationSchedule]:
+    ) -> list[NotificationSchedule]:
         """Get schedules that should trigger at the given time and day."""
         result = await session.execute(
             select(NotificationSchedule)
@@ -598,9 +908,9 @@ class NotificationScheduleRepository:
                 NotificationSchedule.is_active.is_(True),
                 NotificationSchedule.notification_time == current_time,
                 (
-                    (NotificationSchedule.day_of_week == current_day_of_week) |
-                    (NotificationSchedule.day_of_week.is_(None))
-                )
+                    (NotificationSchedule.day_of_week == current_day_of_week)
+                    | (NotificationSchedule.day_of_week.is_(None))
+                ),
             )
         )
         return result.scalars().all()
@@ -611,7 +921,7 @@ class NotificationScheduleRepository:
         current_time: time,
         current_day_of_week: int,
         timezone: str,
-    ) -> List[NotificationSchedule]:
+    ) -> list[NotificationSchedule]:
         """Get schedules for specific time, day, and timezone."""
         result = await session.execute(
             select(NotificationSchedule)
@@ -621,9 +931,9 @@ class NotificationScheduleRepository:
                 NotificationSchedule.notification_time == current_time,
                 NotificationSchedule.timezone == timezone,
                 (
-                    (NotificationSchedule.day_of_week == current_day_of_week) |
-                    (NotificationSchedule.day_of_week.is_(None))
-                )
+                    (NotificationSchedule.day_of_week == current_day_of_week)
+                    | (NotificationSchedule.day_of_week.is_(None))
+                ),
             )
         )
         return result.scalars().all()

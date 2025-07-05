@@ -313,7 +313,7 @@ docker-compose logs postgres
 docker-compose exec postgres psql -U user -d easy_track
 
 # Check database statistics
-SELECT 
+SELECT
     schemaname,
     tablename,
     n_tup_ins as "Inserts",
@@ -436,13 +436,13 @@ make scale-down
 
 ```sql
 -- Monitor slow queries
-SELECT query, mean_time, calls 
-FROM pg_stat_statements 
-ORDER BY mean_time DESC 
+SELECT query, mean_time, calls
+FROM pg_stat_statements
+ORDER BY mean_time DESC
 LIMIT 10;
 
 -- Add custom indexes
-CREATE INDEX CONCURRENTLY idx_custom 
+CREATE INDEX CONCURRENTLY idx_custom
 ON table_name(column_name);
 ```
 

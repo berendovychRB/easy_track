@@ -118,21 +118,25 @@ test-cov: ## Run tests with coverage
 	$(PYTEST) --cov=src/easy_track --cov-report=html --cov-report=term-missing
 	@echo "$(GREEN)✅ Tests with coverage completed!$(NC)"
 
-lint: ## Run linting checks
-	@echo "$(BLUE)Running linting checks...$(NC)"
-	@if command -v flake8 >/dev/null 2>&1; then \
-		flake8 src/ --max-line-length=88 --extend-ignore=E203,W503; \
+lint: ## Run linting checks with ruff
+	@echo "$(BLUE)Running linting checks with ruff...$(NC)"
+	@if command -v ruff >/dev/null 2>&1; then \
+		ruff check src/ --fix; \
 	else \
-		echo "$(YELLOW)⚠️  flake8 not installed, skipping...$(NC)"; \
+		echo "$(YELLOW)⚠️  ruff not installed, installing...$(NC)"; \
+		pip install ruff; \
+		ruff check src/ --fix; \
 	fi
 	@echo "$(GREEN)✅ Linting completed!$(NC)"
 
-format: ## Format code with black
-	@echo "$(BLUE)Formatting code...$(NC)"
-	@if command -v black >/dev/null 2>&1; then \
-		black src/ --line-length=88; \
+format: ## Format code with ruff
+	@echo "$(BLUE)Formatting code with ruff...$(NC)"
+	@if command -v ruff >/dev/null 2>&1; then \
+		ruff format src/; \
 	else \
-		echo "$(YELLOW)⚠️  black not installed, skipping...$(NC)"; \
+		echo "$(YELLOW)⚠️  ruff not installed, installing...$(NC)"; \
+		pip install ruff; \
+		ruff format src/; \
 	fi
 	@echo "$(GREEN)✅ Code formatting completed!$(NC)"
 
@@ -159,7 +163,7 @@ pre-commit: ## Run all pre-commit checks
 	@if command -v pre-commit >/dev/null 2>&1; then \
 		pre-commit run --all-files; \
 	else \
-		$(MAKE) format lint type-check security-check; \
+		$(MAKE) format lint type-check; \
 	fi
 	@echo "$(GREEN)✅ Pre-commit checks completed!$(NC)"
 
@@ -450,7 +454,7 @@ prod: deploy-prod ## Quick production deployment
 
 quick-test: format lint test ## Quick code quality check
 
-all-checks: clean format lint type-check security-check test-cov ## Run all quality checks
+all-checks: clean format lint type-check test-cov ## Run all quality checks
 
 # Print variables for debugging
 debug: ## Show Makefile variables

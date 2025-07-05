@@ -12,36 +12,36 @@ __description__ = "Telegram bot for tracking body measurements"
 
 # Package metadata
 __all__ = [
-    "__version__",
     "__author__",
-    "__email__",
     "__description__",
+    "__email__",
+    "__version__",
 ]
 
 # Import main components for easy access
-from .models import Base, User, MeasurementType, UserMeasurementType, Measurement
-from .database import DatabaseManager, init_db, close_db
+from .database import DatabaseManager, close_db, init_db
+from .models import Base, Measurement, MeasurementType, User, UserMeasurementType
 from .repositories import (
-    UserRepository,
+    MeasurementRepository,
     MeasurementTypeRepository,
     UserMeasurementTypeRepository,
-    MeasurementRepository,
+    UserRepository,
 )
 
 # Make key components available at package level
 __all__.extend(
     [
         "Base",
-        "User",
-        "MeasurementType",
-        "UserMeasurementType",
-        "Measurement",
         "DatabaseManager",
-        "init_db",
-        "close_db",
-        "UserRepository",
-        "MeasurementTypeRepository",
-        "UserMeasurementTypeRepository",
+        "Measurement",
         "MeasurementRepository",
+        "MeasurementType",
+        "MeasurementTypeRepository",
+        "User",
+        "UserMeasurementType",
+        "UserMeasurementTypeRepository",
+        "UserRepository",
+        "close_db",
+        "init_db",
     ]
 )

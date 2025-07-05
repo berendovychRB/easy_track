@@ -1,12 +1,14 @@
 import asyncio
 import logging
 from datetime import datetime, time
-from typing import Optional
+
 import pytz
 from aiogram import Bot
+
+from .coach_notification_repository import CoachNotificationRepository
 from .database import DatabaseManager
-from .repositories import NotificationScheduleRepository
 from .i18n.translator import translator
+from .repositories import NotificationScheduleRepository
 
 logger = logging.getLogger(__name__)
 
@@ -17,7 +19,7 @@ class NotificationScheduler:
     def __init__(self, bot: Bot):
         self.bot = bot
         self.is_running = False
-        self._task: Optional[asyncio.Task] = None
+        self._task: asyncio.Task | None = None
 
     async def start(self):
         """Start the notification scheduler."""
@@ -59,14 +61,31 @@ class NotificationScheduler:
     async def _check_and_send_notifications(self):
         """Check for pending notifications and send them."""
         try:
+            # Send scheduled reminder notifications
+            await self._send_scheduled_notifications()
+
+            # Send pending coach notifications
+            await self._send_coach_notifications()
+
+        except Exception as e:
+            logger.error(f"Error checking notifications: {e}")
+
+    async def _send_scheduled_notifications(self):
+        """Send scheduled reminder notifications."""
+        try:
             # Get current UTC time
             utc_now = datetime.now(pytz.UTC)
 
             # Check common timezones to avoid checking every user individually
             timezones_to_check = [
-                "UTC", "Europe/Kiev", "Europe/Berlin",
-                "Europe/Paris", "Europe/Madrid", "Europe/Rome",
-                "America/New_York", "America/Los_Angeles"
+                "UTC",
+                "Europe/Kiev",
+                "Europe/Berlin",
+                "Europe/Paris",
+                "Europe/Madrid",
+                "Europe/Rome",
+                "America/New_York",
+                "America/Los_Angeles",
             ]
 
             for tz_name in timezones_to_check:
@@ -86,7 +105,9 @@ class NotificationScheduler:
                             session, rounded_time, current_day_of_week, tz_name
                         )
 
-                    schedules = await DatabaseManager.execute_with_session(_get_schedules_for_tz)
+                    schedules = await DatabaseManager.execute_with_session(
+                        _get_schedules_for_tz
+                    )
 
                     for schedule in schedules:
                         try:
@@ -107,7 +128,54 @@ class NotificationScheduler:
                     logger.error(f"Error checking timezone {tz_name}: {e}")
 
         except Exception as e:
-            logger.error(f"Error checking notifications: {e}")
+            logger.error(f"Error sending scheduled notifications: {e}")
+
+    async def _send_coach_notifications(self):
+        """Send pending coach notifications."""
+        try:
+
+            async def _get_and_send_notifications(session):
+                # Get pending notifications
+                notifications = (
+                    await CoachNotificationRepository.get_pending_notifications(session)
+                )
+
+                sent_count = 0
+                for notification in notifications:
+                    try:
+                        # Send notification to coach
+                        await self.bot.send_message(
+                            chat_id=notification.coach.telegram_id,
+                            text=notification.message,
+                            parse_mode="Markdown",
+                        )
+
+                        # Mark as sent
+                        await CoachNotificationRepository.mark_notification_sent(
+                            session, notification.id
+                        )
+                        sent_count += 1
+
+                        logger.debug(
+                            f"Sent coach notification {notification.id} to coach {notification.coach_id}"
+                        )
+
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to send coach notification {notification.id}: {e}"
+                        )
+
+                return sent_count
+
+            sent_count = await DatabaseManager.execute_with_session(
+                _get_and_send_notifications
+            )
+
+            if sent_count > 0:
+                logger.info(f"Sent {sent_count} coach notifications")
+
+        except Exception as e:
+            logger.error(f"Error sending coach notifications: {e}")
 
     async def _send_notification(self, telegram_id: int, language: str):
         """Send a notification message to a user."""
@@ -127,12 +195,23 @@ class NotificationScheduler:
             logger.error(f"Failed to send test notification: {e}")
             raise
 
+    async def send_test_coach_notification(self, coach_telegram_id: int, message: str):
+        """Send a test coach notification (for debugging)."""
+        try:
+            await self.bot.send_message(
+                chat_id=coach_telegram_id, text=message, parse_mode="Markdown"
+            )
+            logger.info(f"Test coach notification sent to coach {coach_telegram_id}")
+        except Exception as e:
+            logger.error(f"Failed to send test coach notification: {e}")
+            raise
+
 
 # Global scheduler instance
-scheduler: Optional[NotificationScheduler] = None
+scheduler: NotificationScheduler | None = None
 
 
-def get_scheduler() -> Optional[NotificationScheduler]:
+def get_scheduler() -> NotificationScheduler | None:
     """Get the global scheduler instance."""
     return scheduler
 

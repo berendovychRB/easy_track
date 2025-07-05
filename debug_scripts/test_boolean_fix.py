@@ -4,7 +4,6 @@ Simple test to verify the boolean comparison fix for SQLAlchemy asyncpg issues.
 """
 
 import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -12,15 +11,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
 from dotenv import load_dotenv
+
 from easy_track.database import DatabaseManager, init_db
 from easy_track.repositories import (
-    UserRepository,
     MeasurementTypeRepository,
-    UserMeasurementTypeRepository
+    UserMeasurementTypeRepository,
+    UserRepository,
 )
 
 # Load environment variables
 load_dotenv()
+
 
 async def test_boolean_fix():
     """Test the boolean comparison fix."""
@@ -36,6 +37,7 @@ async def test_boolean_fix():
         async def run_test(session):
             # Clean data first
             from sqlalchemy import text
+
             await session.execute(text("DELETE FROM user_measurement_types"))
             await session.execute(text("DELETE FROM measurements"))
             await session.execute(text("DELETE FROM measurement_types"))
@@ -47,7 +49,7 @@ async def test_boolean_fix():
                 telegram_id=555666777,
                 username="testfix",
                 first_name="Test",
-                last_name="Fix"
+                last_name="Fix",
             )
             print(f"✅ Created user: {user.id}")
 
@@ -79,7 +81,9 @@ async def test_boolean_fix():
             print(f"   ✅ Query with results: {len(user_types)} results")
 
             for ut in user_types:
-                print(f"      - {ut.measurement_type.name} ({ut.measurement_type.unit})")
+                print(
+                    f"      - {ut.measurement_type.name} ({ut.measurement_type.unit})"
+                )
 
             # Test 4: Get all active types
             print("\n🧪 Test 4: Get all active measurement types")
@@ -88,8 +92,10 @@ async def test_boolean_fix():
 
             # Test 5: Remove measurement type
             print("\n🧪 Test 5: Remove measurement type")
-            removed = await UserMeasurementTypeRepository.remove_measurement_type_from_user(
-                session, user.id, weight_type.id
+            removed = (
+                await UserMeasurementTypeRepository.remove_measurement_type_from_user(
+                    session, user.id, weight_type.id
+                )
             )
             print(f"   ✅ Removed measurement type: {removed}")
 
@@ -113,8 +119,10 @@ async def test_boolean_fix():
         print(f"\n❌ TEST FAILED: {e}")
         print(f"Error type: {type(e).__name__}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 async def test_bot_scenario():
     """Test the exact bot scenario that was failing."""
@@ -122,6 +130,7 @@ async def test_bot_scenario():
     print("=" * 30)
 
     try:
+
         async def simulate_bot_flow(session):
             # Get a user (simulate user creation in bot)
             user = await UserRepository.get_user_by_telegram_id(session, 555666777)
@@ -131,7 +140,7 @@ async def test_bot_scenario():
                     telegram_id=555666777,
                     username="bottest",
                     first_name="Bot",
-                    last_name="Test"
+                    last_name="Test",
                 )
 
             # This is the EXACT line that was failing in handle_add_measurement
@@ -149,8 +158,10 @@ async def test_bot_scenario():
     except Exception as e:
         print(f"❌ Bot scenario failed: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 async def main():
     """Main test execution."""
@@ -172,8 +183,10 @@ async def main():
     except Exception as e:
         print(f"\n💥 CRITICAL ERROR: {e}")
         import traceback
+
         traceback.print_exc()
         return False
+
 
 if __name__ == "__main__":
     success = asyncio.run(main())

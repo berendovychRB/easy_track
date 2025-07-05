@@ -17,6 +17,7 @@
     "language_settings": "🌐 Language",
     "notifications": "🔔 Notifications",
     "back_to_menu": "🔙 Back to Menu",
+    "back_to_coach_panel": "🔙 Back to Coach Panel",
     "back": "◀️ Back",
     "cancel": "❌ Cancel",
     "confirm": "✅ Confirm",
@@ -41,7 +42,8 @@
     "enable": "✅ Enable",
     "disable": "❌ Disable",
     "delete": "🗑️ Delete",
-    "edit": "✏️ Edit"
+    "edit": "✏️ Edit",
+    "coach_requests": "📩 Coach Requests"
   },
   "language": {
     "select": "🌐 Select your language:",
@@ -203,5 +205,149 @@
     "waiting_measurement": "waiting_for_measurement_value",
     "waiting_notes": "waiting_for_notes",
     "waiting_notification_time": "waiting_for_notification_time"
+  },
+  "coach": {
+    "buttons": {
+      "my_athletes": "👥 My Athletes",
+      "athletes_progress": "📊 Athletes Progress",
+      "coach_notifications": "🔔 Coach Notifications",
+      "become_coach": "🎓 Become Coach",
+      "coach_panel": "🎯 Coach Panel",
+      "add_athlete": "➕ Add Athlete",
+      "add_first_athlete": "➕ Add Your First Athlete",
+      "remove_athlete": "🗑️ Remove Athlete",
+      "view_all_progress": "📊 All Progress",
+      "coach_stats": "📈 Coach Stats",
+      "coach_guide": "🎓 Coach Guide",
+      "notification_settings": "🔔 Notifications",
+      "view_athlete_details": "📊 {name} Details",
+      "view_full_history": "📈 View Full History",
+      "notification_history": "📊 Notification History"
+    },
+    "panel": {
+      "title": "🎯 **Coach Panel**\n\nChoose an action:"
+    },
+    "become_coach": {
+      "success": "🎉 **Congratulations!** You are now a coach!\n\nYou can now:\n• Add athletes through the coach panel\n• View your athletes' progress\n• Receive notifications when athletes add measurements\n• Customize your notification preferences\n\nUse the '🎯 Coach Panel' button in the main menu!",
+      "welcome_answer": "🎉 Welcome to coaching!",
+      "command_success": "🎉 **Congratulations!** You are now a coach!\n\n**You can now:**\n• Add athletes through the coach panel\n• View your athletes\n• Remove athletes\n• View athlete progress\n\nUse /menu and click '🎯 Coach Panel' to access all coach functions!"
+    },
+    "dashboard": {
+      "welcome": "🌟 Welcome to coaching!\n\nYou don't have any athletes yet.\nAdd your first athlete to get started and begin receiving notifications when they log measurements!\n\n💡 **Tip:** Athletes can find you by your username to request supervision.",
+      "athletes_list": "👥 **My Athletes** ({count})",
+      "activity_today": "today",
+      "activity_yesterday": "yesterday",
+      "activity_days_ago": "{days}d ago",
+      "activity_no_data": "no data",
+      "quick_actions": "💡 **Quick Actions:**"
+    },
+    "add_athlete": {
+      "prompt": "👥 **Add New Athlete**\n\nPlease enter the athlete's username or Telegram ID:\n• You can use @username or just the username\n• Or enter their Telegram ID number\n\nSend /cancel to cancel this operation.",
+      "command_prompt": "👥 Please enter the athlete's username or Telegram ID:\nYou can use @username or just the username without @",
+      "not_found": "❌ User not found. Please check the username or Telegram ID and try again.\nMake sure the user has started the bot at least once.",
+      "self_add": "❌ You cannot add yourself as an athlete.",
+      "already_added": "❌ This athlete is already in your list.",
+      "request_sent": "✅ **Request Sent!**\n\n👤 {name}{username}\n\n📩 A coaching request has been sent to the athlete\n⏳ Please wait for their confirmation\n🔔 You will receive a notification when the athlete accepts or rejects your request",
+      "request_pending": "⏳ **Request Already Sent**\n\n👤 {name}{username}\n\n📩 A coaching request has already been sent to this athlete\n⏳ Please wait for their confirmation",
+      "success": "✅ **Athlete Added Successfully!**\n\n👤 {name}{username}\n\nYou can now view their measurements and progress!",
+      "username_format": " (@{username})",
+      "permission_denied": "❌ You need to be a coach to add athletes. Use /become_coach to upgrade your role.",
+      "operation_cancelled": "❌ Operation cancelled."
+    },
+    "requests": {
+      "incoming_title": "📩 **Coaching Requests**",
+      "no_incoming": "📩 You have no coaching requests.",
+      "incoming_request": "👤 **{coach_name}** wants to become your coach\n\n📅 Sent: {date}\n{message}\n\n🤔 Allow {coach_name} to view your measurements and progress?",
+      "accept": "✅ Accept",
+      "reject": "❌ Reject",
+      "accepted": "✅ **Request Accepted!**\n\n👤 {coach_name} is now your coach\n📊 They will be able to view your measurements and progress",
+      "rejected": "❌ **Request Rejected**\n\n👤 Request from {coach_name} has been rejected",
+      "expired": "⏰ **Request Expired**\n\nThis request is no longer valid",
+      "notification_title": "📩 **New Coaching Request!**",
+      "notification_text": "👤 {coach_name} wants to become your coach\n\n📱 Go to the bot to review the request",
+      "coach_accepted": "🎉 **Request Accepted!**\n\n👤 {athlete_name} accepted your request\n📊 You can now view their measurements and progress",
+      "coach_rejected": "😔 **Request Rejected**\n\n👤 {athlete_name} rejected your coaching request",
+      "view_requests": "📩 View Requests",
+      "with_message": "\n💬 **Message:** {message}"
+    },
+    "list_athletes": {
+      "title": "👥 **Your Athletes:**",
+      "no_athletes": "👥 You don't have any athletes yet.\nUse /add_athlete to add your first athlete!",
+      "permission_denied": "❌ You need to be a coach to view athletes. Use /become_coach to upgrade your role."
+    },
+    "remove_athlete": {
+      "select": "👥 **Remove Athlete**\n\nSelect the athlete you want to remove from your supervision:",
+      "no_athletes": "👥 You don't have any athletes to remove.\nUse /add_athlete to add athletes first!",
+      "permission_denied": "❌ You need to be a coach to remove athletes. Use /become_coach to upgrade your role.",
+      "success": "✅ **Athlete Removed**\n\n👤 {name}{username}\n\nhas been removed from your supervision.",
+      "failed": "❌ Failed to remove athlete. Please try again."
+    },
+    "progress": {
+      "overview_title": "📊 **Athletes Progress Overview**",
+      "no_athletes": "👥 **Athletes Progress**\n\nYou don't have any athletes yet.\nAdd athletes first to see their progress!",
+      "no_measurements": "📭 No recent measurements",
+      "measurement_format": "📏 {type}: {value} {unit} ({date})"
+    },
+    "athlete_detail": {
+      "title": "👤 **{name}**",
+      "username": "@{username}",
+      "recent_measurements": "📊 **Recent Measurements:**",
+      "no_measurements": "📭 No measurements recorded yet.",
+      "measurement_entry": "📏 **{type}**\n   {value} {unit}\n   📅 {date}",
+      "measurement_with_notes": "📏 **{type}**\n   {value} {unit}\n   📅 {date}\n   📝 {notes}",
+      "permission_denied": "❌ Permission denied or athlete not found."
+    },
+    "stats": {
+      "title": "📈 **Coach Statistics**",
+      "athletes_count": "👥 **Athletes:** {count}",
+      "measurements_week": "📊 **Measurements this week:** {count}",
+      "active_today": "🏃 **Active today:** {count}",
+      "notifications_title": "🔔 **Notifications (30 days):**",
+      "notifications_sent": "📤 Sent: {count}",
+      "notifications_pending": "⏳ Pending: {count}",
+      "measurement_alerts": "📊 Measurement alerts: {count}",
+      "engagement_rate": "📈 **Today's Engagement:** {rate}%",
+      "permission_denied": "❌ Permission denied."
+    },
+    "guide": {
+      "title": "🎓 **Coach Guide**",
+      "content": "**Getting Started:**\n1️⃣ Add athletes using the ➕ Add Athlete button\n2️⃣ Athletes must have used this bot before\n3️⃣ You'll receive notifications when they log measurements\n\n**Finding Athletes:**\n• Use their username (like john_doe)\n• Use their Telegram ID number\n• Ask them to find you by your username\n\n**Managing Athletes:**\n📊 View individual progress and history\n🗑️ Remove athletes when needed\n🔔 Customize notification preferences\n\n**Notifications:**\nYou'll get instant alerts when athletes:\n• Add new measurements\n• Reach goals (if enabled)\n• Haven't been active (if enabled)\n\n**Tips:**\n💡 Athletes can have multiple coaches\n💡 All your athlete data stays private\n💡 You keep your own athlete features too\n\nReady to start coaching? Add your first athlete! 🚀"
+    },
+    "notifications": {
+      "settings_title": "🔔 **Coach Notification Settings**",
+      "permission_denied": "❌ You need to be a coach to manage notifications. Use /become_coach to upgrade your role.",
+      "types": {
+        "athlete_measurement_added": {
+          "name": "New Measurements",
+          "description": "Get notified when athletes add measurements"
+        },
+        "athlete_goal_achieved": {
+          "name": "Goal Achievements",
+          "description": "Get notified when athletes reach goals"
+        },
+        "athlete_inactive": {
+          "name": "Inactive Athletes",
+          "description": "Get notified when athletes are inactive"
+        },
+        "daily_summary": {
+          "name": "Daily Summary",
+          "description": "Get daily summary of athlete activity"
+        }
+      },
+      "toggle_success": "✅ **Notification Updated**\n\n📱 {name} notifications are now **{status}**.\n\nReturning to settings...",
+      "toggle_enabled": "✅ Notification enabled",
+      "toggle_disabled": "✅ Notification disabled",
+      "history_title": "📊 **Notification History**",
+      "history_empty": "📊 **Notification History**\n\nNo notifications in the last 30 days.",
+      "history_item": "{status} {date} - {athlete}\n   📊 New measurement added",
+      "measurement_notification": "📊 New measurement from {name}\n📏 {type}: {value} {unit}\n📅 {date}",
+      "measurement_with_notes": "📊 New measurement from {name}\n📏 {type}: {value} {unit}\n📅 {date}\n📝 Note: {notes}"
+    },
+    "errors": {
+      "permission_denied": "❌ Permission denied.",
+      "general_error": "❌ An error occurred. Please try again.",
+      "not_coach": "❌ You need to be a coach to use this feature.",
+      "athlete_not_found": "❌ Athlete not found or no permission to access."
+    }
   }
 }

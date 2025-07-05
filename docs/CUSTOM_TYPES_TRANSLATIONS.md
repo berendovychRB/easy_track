@@ -70,8 +70,8 @@ text = translator.get("custom_types.title", user_lang)
 
 # Parameterized translation
 error_msg = translator.get(
-    "custom_types.name_exists", 
-    user_lang, 
+    "custom_types.name_exists",
+    user_lang,
     name="Blood Pressure"
 )
 ```

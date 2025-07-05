@@ -1,13 +1,13 @@
 import json
-from typing import Dict, Any, Optional
 from pathlib import Path
+from typing import Any
 
 
 class Translator:
     """Translation service for handling internationalization."""
 
     def __init__(self):
-        self.translations: Dict[str, Dict[str, Any]] = {}
+        self.translations: dict[str, dict[str, Any]] = {}
         self.default_language = "en"
         self.supported_languages = ["en", "uk"]
         self._load_translations()
@@ -20,7 +20,7 @@ class Translator:
             translation_file = translations_dir / f"{lang}.json"
             if translation_file.exists():
                 try:
-                    with open(translation_file, "r", encoding="utf-8") as f:
+                    with open(translation_file, encoding="utf-8") as f:
                         self.translations[lang] = json.load(f)
                 except (json.JSONDecodeError, FileNotFoundError) as e:
                     # Fallback to empty dict if translation file is corrupted
@@ -29,7 +29,7 @@ class Translator:
             else:
                 self.translations[lang] = {}
 
-    def get(self, key: str, language: Optional[str] = None, **kwargs) -> str:
+    def get(self, key: str, language: str | None = None, **kwargs) -> str:
         """
         Get translated text by key.
 
@@ -67,7 +67,7 @@ class Translator:
             # Return unformatted string if formatting fails
             return translation
 
-    def _get_nested_value(self, data: Dict[str, Any], key: str) -> Optional[str]:
+    def _get_nested_value(self, data: dict[str, Any], key: str) -> str | None:
         """
         Get value from nested dictionary using dot notation.
 
@@ -103,7 +103,7 @@ class Translator:
         return self.supported_languages.copy()
 
     def get_measurement_type_name(
-        self, type_name: str, language: Optional[str] = None
+        self, type_name: str, language: str | None = None
     ) -> str:
         """Get localized measurement type name."""
         # type_name is now expected to be the translation key directly
@@ -115,7 +115,7 @@ class Translator:
             return type_name.replace("_", " ").title()
         return translated
 
-    def get_unit_name(self, unit: str, language: Optional[str] = None) -> str:
+    def get_unit_name(self, unit: str, language: str | None = None) -> str:
         """Get localized unit name."""
         key = f"units.{unit.lower()}"
         translated = self.get(key, language)

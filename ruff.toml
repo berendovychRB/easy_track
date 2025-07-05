@@ -1,0 +1,110 @@
+# Ruff configuration for EasyTrack
+# See https://docs.astral.sh/ruff/configuration/
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "alembic/versions",
+    "debug_scripts/",
+    "tests/debug_*",
+]
+
+# Same as Black
+line-length = 88
+indent-width = 4
+
+# Assume Python 3.11
+target-version = "py311"
+
+[lint]
+# Enable basic rule set
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # Pyflakes
+    "I",    # isort
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "Q",    # flake8-quotes
+    "RUF",  # Ruff-specific rules
+]
+
+ignore = [
+    # Allow print statements (useful for debugging)
+    "T201",
+    # Allow assert statements
+    "S101",
+    # Allow long lines in specific cases
+    "E501",
+    # Allow unused variables with underscore prefix
+    "F841",
+    # Allow bare except
+    "E722",
+    # Allow lambda assignment
+    "E731",
+    # Allow function definitions that don't bind loop variables
+    "B023",
+    # Allow implicit Optional types
+    "RUF013",
+    # Allow mutable class attributes without ClassVar
+    "RUF012",
+    # Allow ambiguous unicode characters (emojis)
+    "RUF001",
+]
+
+# Allow fix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+# Allow unused variables when underscore-prefixed
+dummy-variable-rgx = "^(_+|(_+[a-zA-Z0-9_]*[a-zA-Z0-9]+?))$"
+
+[format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Respect magic trailing commas
+skip-magic-trailing-comma = false
+
+# Auto-detect line ending
+line-ending = "auto"
+
+[lint.per-file-ignores]
+# Tests can use various violations
+"tests/**/*" = [
+    "F401",      # Unused import
+    "F841",      # Unused variables
+]
+
+# Alembic files can have various violations
+"alembic/**/*" = [
+    "F401",      # Unused import
+    "F811",      # Redefined name
+]
+
+# __init__.py files can have unused imports
+"**/__init__.py" = [
+    "F401",      # Unused import
+]
+
+[lint.isort]
+# Import sorting configuration
+known-first-party = ["easy_track"]
+known-third-party = ["aiogram", "sqlalchemy", "alembic", "psycopg2"]
+split-on-trailing-comma = true
+
+[lint.flake8-quotes]
+# Use double quotes
+docstring-quotes = "double"
+inline-quotes = "double"
