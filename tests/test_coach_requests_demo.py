@@ -7,7 +7,7 @@ This script demonstrates the new coach-athlete request system.
 import asyncio
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "src"))
@@ -228,7 +228,7 @@ async def demo_coach_request_flow():
         )
 
         # Manually set expiration to past
-        request3.expires_at = datetime.now() - timedelta(days=1)
+        request3.expires_at = datetime.now(UTC) - timedelta(days=1)
         await session.commit()
 
         return request3

@@ -48,7 +48,8 @@
   "language": {
     "select": "🌐 Select your language:",
     "changed": "✅ Language changed successfully!",
-    "current": "Current language: {language}"
+    "current": "Current language: {language}",
+    "unsupported": "❌ Unsupported language"
   },
   "add_measurement": {
     "select_type": "📝 Select measurement type:",

@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -208,7 +208,7 @@ class CoachNotificationRepository:
     ) -> list[CoachNotificationQueue]:
         """Get notification history for a coach."""
         try:
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
             result = await session.execute(
                 select(CoachNotificationQueue)
@@ -238,7 +238,7 @@ class CoachNotificationRepository:
     async def cleanup_old_notifications(session: AsyncSession, days: int = 90) -> int:
         """Clean up old sent notifications."""
         try:
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
             result = await session.execute(
                 select(func.count(CoachNotificationQueue.id)).where(
@@ -272,7 +272,7 @@ class CoachNotificationRepository:
     ) -> dict[str, int]:
         """Get notification statistics for a coach."""
         try:
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
 
             # Total notifications
             total_result = await session.execute(

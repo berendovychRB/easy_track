@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -222,7 +222,7 @@ class TestAthleteCoachRequestRepository:
             coach_id=1,
             athlete_id=2,
             status=AthleteCoachRequestStatus.PENDING,
-            expires_at=datetime.now() - timedelta(days=1),
+            expires_at=datetime.now(UTC) - timedelta(days=1),
         )
 
         # Mock query result

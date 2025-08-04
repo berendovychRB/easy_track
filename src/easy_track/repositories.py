@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, time, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -542,7 +542,7 @@ class MeasurementRepository:
             )
 
             if days > 0:
-                cutoff_date = datetime.now() - timedelta(days=days)
+                cutoff_date = datetime.now(UTC) - timedelta(days=days)
                 cutoff_date = cutoff_date.replace(
                     hour=0, minute=0, second=0, microsecond=0
                 )
@@ -634,7 +634,7 @@ class MeasurementRepository:
             athlete_ids = [athlete.id for athlete in athletes]
 
             # Calculate cutoff date
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(UTC) - timedelta(days=days)
             cutoff_date = cutoff_date.replace(hour=0, minute=0, second=0, microsecond=0)
 
             # Get recent measurements from all athletes

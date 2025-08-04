@@ -2,7 +2,7 @@ import asyncio
 import logging
 import os
 import re
-from datetime import datetime, time
+from datetime import UTC, datetime, time
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.filters import Command, StateFilter
@@ -46,6 +46,93 @@ logger = logging.getLogger(__name__)
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
     raise ValueError("BOT_TOKEN environment variable is required")
+
+
+def escape_markdown(text: str) -> str:
+    """Escape special markdown characters in text."""
+    if not text:
+        return ""
+    # Escape markdown special characters
+    special_chars = [
+        "*",
+        "_",
+        "`",
+        "[",
+        "]",
+        "(",
+        ")",
+        "~",
+        ">",
+        "#",
+        "+",
+        "-",
+        "=",
+        "|",
+        "{",
+        "}",
+        ".",
+        "!",
+    ]
+    for char in special_chars:
+        text = text.replace(char, f"\\{char}")
+    return text
+
+
+async def safe_send_message(
+    bot_instance, chat_id, text, reply_markup=None, parse_mode="Markdown"
+):
+    """Safely send a message with markdown, falling back to plain text if parsing fails."""
+    try:
+        if hasattr(bot_instance, "send_message"):
+            return await bot_instance.send_message(
+                chat_id=chat_id,
+                text=text,
+                reply_markup=reply_markup,
+                parse_mode=parse_mode,
+            )
+        else:
+            # This is a message object, use reply method
+            return await bot_instance.reply(
+                text=text, reply_markup=reply_markup, parse_mode=parse_mode
+            )
+    except Exception as e:
+        if "can't parse entities" in str(e).lower():
+            logger.warning(f"Markdown parsing failed, sending as plain text: {e}")
+            # Retry without markdown
+            try:
+                if hasattr(bot_instance, "send_message"):
+                    return await bot_instance.send_message(
+                        chat_id=chat_id, text=text, reply_markup=reply_markup
+                    )
+                else:
+                    return await bot_instance.reply(
+                        text=text, reply_markup=reply_markup
+                    )
+            except Exception as inner_e:
+                logger.error(f"Failed to send message even without markdown: {inner_e}")
+                raise inner_e
+        else:
+            raise e
+
+
+async def safe_edit_message(message, text, reply_markup=None, parse_mode="Markdown"):
+    """Safely edit a message with markdown, falling back to plain text if parsing fails."""
+    try:
+        return await message.edit_text(
+            text=text, reply_markup=reply_markup, parse_mode=parse_mode
+        )
+    except Exception as e:
+        if "can't parse entities" in str(e).lower():
+            logger.warning(f"Markdown parsing failed, editing as plain text: {e}")
+            # Retry without markdown
+            try:
+                return await message.edit_text(text=text, reply_markup=reply_markup)
+            except Exception as inner_e:
+                logger.error(f"Failed to edit message even without markdown: {inner_e}")
+                raise inner_e
+        else:
+            raise e
+
 
 # Initialize bot and dispatcher
 bot = Bot(token=BOT_TOKEN)
@@ -308,9 +395,9 @@ class BotHandlers:
             )
             for athlete in athletes:
                 name = athlete.first_name or athlete.username or "Unknown"
-                athletes_text += f"• {name}"
+                athletes_text += f"• {escape_markdown(name)}"
                 if athlete.username:
-                    athletes_text += f" (@{athlete.username})"
+                    athletes_text += f" (@{escape_markdown(athlete.username)})"
                 athletes_text += "\n"
 
             keyboard = InlineKeyboardBuilder()
@@ -328,8 +415,11 @@ class BotHandlers:
             )
             keyboard.adjust(2)
 
-            await message.answer(
-                athletes_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            await safe_send_message(
+                message,
+                message.chat.id,
+                athletes_text,
+                reply_markup=keyboard.as_markup(),
             )
 
         except Exception as e:
@@ -360,14 +450,13 @@ class BotHandlers:
 
             if athletes is None:
                 await message.answer(
-                    "❌ You need to be a coach to remove athletes. Use /become_coach to upgrade your role."
+                    translator.get("coach.remove_athlete.permission_denied", user_lang)
                 )
                 return
 
             if not athletes:
                 await message.answer(
-                    "👥 You don't have any athletes to remove.\n"
-                    "Use /add_athlete to add athletes first!"
+                    translator.get("coach.remove_athlete.no_athletes", user_lang)
                 )
                 return
 
@@ -474,7 +563,10 @@ class BotHandlers:
             lang_code = callback.data.replace("set_language_", "")
 
             if not translator.is_supported_language(lang_code):
-                await callback.answer("❌ Unsupported language")
+                user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                    callback.from_user.id
+                )
+                await callback.answer(translator.get("language.unsupported", user_lang))
                 return
 
             # Update user language in database
@@ -588,7 +680,7 @@ class BotHandlers:
                     if recent_measurements:
                         last_measurement = recent_measurements[0]
                         days_ago = (
-                            datetime.now() - last_measurement.measurement_date
+                            datetime.now(UTC) - last_measurement.measurement_date
                         ).days
                         if days_ago == 0:
                             return translator.get(
@@ -609,10 +701,10 @@ class BotHandlers:
                     _get_athlete_stats
                 )
 
-                athletes_text += f"• **{name}**"
+                athletes_text += f"• *{escape_markdown(name)}*"
                 if athlete.username:
-                    athletes_text += f" (@{athlete.username})"
-                athletes_text += f" - 📊 {last_activity}\n"
+                    athletes_text += f" (@{escape_markdown(athlete.username)})"
+                athletes_text += f" - 📊 {escape_markdown(last_activity)}\n"
 
                 # Add button to view athlete details
                 keyboard.add(
@@ -654,8 +746,8 @@ class BotHandlers:
             )
             keyboard.adjust(2, 2, 1, 1)
 
-            await callback.message.edit_text(
-                athletes_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            await safe_edit_message(
+                callback.message, athletes_text, reply_markup=keyboard.as_markup()
             )
             await callback.answer()
 
@@ -754,12 +846,37 @@ class BotHandlers:
                         return "already_added"
                     if (
                         request.created_at
-                        and (datetime.now() - request.created_at).total_seconds() < 60
+                        and (datetime.now(UTC) - request.created_at).total_seconds()
+                        < 60
                     ):
-                        return ("request_sent", athlete, request)
+                        # Load coach data within session context
+                        coach = await UserRepository.get_user_by_id(session, user_id)
+                        coach_data = {
+                            "first_name": coach.first_name,
+                            "username": coach.username,
+                            "telegram_id": coach.telegram_id,
+                        }
+                        request_data = {
+                            "id": request.id,
+                            "message": request.message,
+                            "created_at": request.created_at,
+                        }
+                        return ("request_sent", athlete, request_data, coach_data)
                     return ("request_pending", athlete)
 
-                return ("request_sent", athlete, request)
+                # For new requests, also load coach data
+                coach = await UserRepository.get_user_by_id(session, user_id)
+                coach_data = {
+                    "first_name": coach.first_name,
+                    "username": coach.username,
+                    "telegram_id": coach.telegram_id,
+                }
+                request_data = {
+                    "id": request.id,
+                    "message": request.message,
+                    "created_at": request.created_at,
+                }
+                return ("request_sent", athlete, request_data, coach_data)
 
             result = await DatabaseManager.execute_with_session(_find_and_send_request)
 
@@ -801,7 +918,8 @@ class BotHandlers:
                 )
             elif result[0] == "request_sent":
                 athlete = result[1]
-                request = result[2]
+                request_data = result[2]
+                coach_data = result[3]
                 name = athlete.first_name or athlete.username or "Unknown"
                 username_part = (
                     translator.get(
@@ -814,9 +932,9 @@ class BotHandlers:
                 )
 
                 # Send message to athlete about the request (only for new requests)
-                if hasattr(request, "id"):
+                if request_data.get("id"):
                     await BotHandlers.send_coach_request_notification(
-                        athlete.telegram_id, request
+                        athlete.telegram_id, request_data, coach_data
                     )
 
                 await message.answer(
@@ -839,7 +957,9 @@ class BotHandlers:
             await state.clear()
 
     @staticmethod
-    async def send_coach_request_notification(athlete_telegram_id: int, request):
+    async def send_coach_request_notification(
+        athlete_telegram_id: int, request_data: dict, coach_data: dict
+    ):
         """Send notification to athlete about coach request."""
         try:
             # Get athlete's language
@@ -847,21 +967,23 @@ class BotHandlers:
                 athlete_telegram_id
             )
 
-            coach_name = request.coach.first_name or request.coach.username or "Unknown"
+            coach_name = (
+                coach_data.get("first_name") or coach_data.get("username") or "Unknown"
+            )
 
             # Format date
-            date_str = request.created_at.strftime("%Y-%m-%d %H:%M")
+            date_str = request_data["created_at"].strftime("%Y-%m-%d %H:%M")
 
             # Create keyboard for request response
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
                 InlineKeyboardButton(
                     text=translator.get("coach.requests.accept", athlete_lang),
-                    callback_data=f"accept_request_{request.id}",
+                    callback_data=f"accept_request_{request_data['id']}",
                 ),
                 InlineKeyboardButton(
                     text=translator.get("coach.requests.reject", athlete_lang),
-                    callback_data=f"reject_request_{request.id}",
+                    callback_data=f"reject_request_{request_data['id']}",
                 ),
             )
             keyboard.adjust(2)
@@ -875,9 +997,9 @@ class BotHandlers:
                     translator.get(
                         "coach.requests.with_message",
                         athlete_lang,
-                        message=request.message,
+                        message=request_data["message"],
                     )
-                    if request.message
+                    if request_data["message"]
                     else ""
                 ),
             )
@@ -1201,11 +1323,15 @@ class BotHandlers:
             success, athlete = result
             name = athlete.first_name or athlete.username or "Unknown"
 
+            user_lang = await BotHandlers.get_user_language(user_id)
+            username_part = f" (@{athlete.username})" if athlete.username else ""
             await callback.message.edit_text(
-                f"✅ **Athlete Removed**\n\n"
-                f"👤 {name}"
-                f"{f' (@{athlete.username})' if athlete.username else ''}\n\n"
-                f"has been removed from your supervision."
+                translator.get(
+                    "coach.remove_athlete.success",
+                    user_lang,
+                    name=name,
+                    username=username_part,
+                )
             )
 
             # Show back to athletes menu after delay
@@ -1476,7 +1602,7 @@ class BotHandlers:
                     date_str = notification.created_at.strftime("%m/%d %H:%M")
                     status = "✅" if notification.is_sent else "⏳"
 
-                    text += f"{status} {date_str} - {athlete_name}\n"
+                    text += f"{status} {date_str} - {escape_markdown(athlete_name)}\n"
                     if (
                         notification.notification_type
                         == CoachNotificationType.ATHLETE_MEASUREMENT_ADDED.value
@@ -1492,8 +1618,8 @@ class BotHandlers:
                 )
             )
 
-            await callback.message.edit_text(
-                text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            await safe_edit_message(
+                callback.message, text, reply_markup=keyboard.as_markup()
             )
             await callback.answer()
 
@@ -1623,12 +1749,12 @@ class BotHandlers:
                 measurements = athlete_data["measurements"]
 
                 athlete_name = athlete.first_name or athlete.username or "Unknown"
-                progress_text += f"👤 **{athlete_name}**\n"
+                progress_text += f"👤 *{escape_markdown(athlete_name)}*\n"
 
                 if measurements:
                     for measurement in measurements:
                         date_str = measurement.measurement_date.strftime("%m/%d")
-                        progress_text += f"   {translator.get('coach.progress.measurement_format', user_lang, type=measurement.measurement_type.name, value=measurement.value, unit=measurement.measurement_type.unit, date=date_str)}\n"
+                        progress_text += f"   {translator.get('coach.progress.measurement_format', user_lang, type=escape_markdown(measurement.measurement_type.name), value=measurement.value, unit=escape_markdown(measurement.measurement_type.unit), date=date_str)}\n"
                 else:
                     progress_text += f"   {translator.get('coach.progress.no_measurements', user_lang)}\n"
 
@@ -1658,8 +1784,8 @@ class BotHandlers:
             )
             keyboard.adjust(1)
 
-            await callback.message.edit_text(
-                progress_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            await safe_edit_message(
+                callback.message, progress_text, reply_markup=keyboard.as_markup()
             )
             await callback.answer()
 
@@ -1703,8 +1829,11 @@ class BotHandlers:
             data = await DatabaseManager.execute_with_session(_get_athlete_details)
 
             if not data:
+                user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                    callback.from_user.id
+                )
                 await callback.message.edit_text(
-                    "❌ Permission denied or athlete not found."
+                    translator.get("coach.errors.athlete_not_found", user_lang)
                 )
                 await callback.answer()
                 return
@@ -1713,26 +1842,26 @@ class BotHandlers:
             measurements = data["measurements"]
             athlete_name = athlete.first_name or athlete.username or "Unknown"
 
-            # Build detailed view
-            detail_text = f"👤 **{athlete_name}**\n"
+            # Build detailed view with escaped markdown
+            detail_text = f"👤 *{escape_markdown(athlete_name)}*\n"
             if athlete.username:
-                detail_text += f"@{athlete.username}\n"
+                detail_text += f"@{escape_markdown(athlete.username)}\n"
             detail_text += "\n"
 
             if measurements:
-                detail_text += "📊 **Recent Measurements:**\n\n"
+                detail_text += "📊 *Recent Measurements:*\n\n"
                 for measurement in measurements:
                     date_str = measurement.measurement_date.strftime("%m/%d %H:%M")
-                    detail_text += f"📏 **{measurement.measurement_type.name}**\n"
                     detail_text += (
-                        f"   {measurement.value} {measurement.measurement_type.unit}\n"
+                        f"📏 *{escape_markdown(measurement.measurement_type.name)}*\n"
                     )
+                    detail_text += f"   {measurement.value} {escape_markdown(measurement.measurement_type.unit)}\n"
                     detail_text += f"   📅 {date_str}\n"
                     if measurement.notes:
-                        detail_text += f"   📝 {measurement.notes}\n"
+                        detail_text += f"   📝 {escape_markdown(measurement.notes)}\n"
                     detail_text += "\n"
             else:
-                detail_text += "📭 No measurements recorded yet.\n"
+                detail_text += "📭 No measurements recorded yet\\.\n"
 
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
@@ -1751,8 +1880,8 @@ class BotHandlers:
             )
             keyboard.adjust(1)
 
-            await callback.message.edit_text(
-                detail_text, reply_markup=keyboard.as_markup(), parse_mode="Markdown"
+            await safe_edit_message(
+                callback.message, detail_text, reply_markup=keyboard.as_markup()
             )
             await callback.answer()
 
@@ -1802,7 +1931,7 @@ class BotHandlers:
                         set(
                             m.user_id
                             for m in recent_measurements
-                            if (datetime.now() - m.measurement_date).days == 0
+                            if (datetime.now(UTC) - m.measurement_date).days == 0
                         )
                     ),
                 }
@@ -1810,7 +1939,12 @@ class BotHandlers:
             stats = await DatabaseManager.execute_with_session(_get_coach_stats)
 
             if stats is None:
-                await callback.message.edit_text("❌ Permission denied.")
+                user_lang = await BotHandlers.get_user_language_by_telegram_id(
+                    callback.from_user.id
+                )
+                await callback.message.edit_text(
+                    translator.get("coach.errors.permission_denied", user_lang)
+                )
                 await callback.answer()
                 return
 
