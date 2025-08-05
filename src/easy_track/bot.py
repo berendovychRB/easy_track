@@ -115,8 +115,16 @@ async def safe_send_message(
             raise e
 
 
-async def safe_edit_message(message, text, reply_markup=None, parse_mode="Markdown"):
-    """Safely edit a message with markdown, falling back to plain text if parsing fails."""
+async def safe_edit_message(
+    message,
+    text,
+    reply_markup=None,
+    parse_mode="Markdown",
+    callback=None,
+    user_lang="uk",
+):
+    """Safely edit a message with markdown, falling back to plain text if parsing fails.
+    Also handles 'message is not modified' error by showing refresh confirmation."""
     try:
         return await message.edit_text(
             text=text, reply_markup=reply_markup, parse_mode=parse_mode
@@ -128,8 +136,21 @@ async def safe_edit_message(message, text, reply_markup=None, parse_mode="Markdo
             try:
                 return await message.edit_text(text=text, reply_markup=reply_markup)
             except Exception as inner_e:
-                logger.error(f"Failed to edit message even without markdown: {inner_e}")
-                raise inner_e
+                if "message is not modified" in str(inner_e).lower() and callback:
+                    # Message content is the same, show refresh confirmation
+                    await callback.answer(
+                        translator.get("common.data_refreshed", user_lang)
+                    )
+                    return None
+                else:
+                    logger.error(
+                        f"Failed to edit message even without markdown: {inner_e}"
+                    )
+                    raise inner_e
+        elif "message is not modified" in str(e).lower() and callback:
+            # Message content is the same, show refresh confirmation
+            await callback.answer(translator.get("common.data_refreshed", user_lang))
+            return None
         else:
             raise e
 
@@ -193,7 +214,7 @@ class BotHandlers:
 
         async def _get_language(session):
             user = await UserRepository.get_user_by_id(session, user_id)
-            return user.language if user else "en"
+            return user.language if user else "uk"
 
         return await DatabaseManager.execute_with_session(_get_language)
 
@@ -227,7 +248,7 @@ class BotHandlers:
                 (
                     await BotHandlers.get_user_language(user_id)
                     if "user_id" in locals()
-                    else "en"
+                    else "uk"
                 ),
             )
             await message.answer(error_text)
@@ -403,14 +424,16 @@ class BotHandlers:
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
                 InlineKeyboardButton(
-                    text="🔙 Back to Athletes", callback_data="coach_athletes"
+                    text=translator.get("coach.buttons.my_athletes", user_lang),
+                    callback_data="coach_athletes",
                 ),
                 InlineKeyboardButton(
-                    text="🔙 Back to Progress",
+                    text=translator.get("coach.buttons.view_all_progress", user_lang),
                     callback_data="view_all_athletes_progress",
                 ),
                 InlineKeyboardButton(
-                    text="🔙 Coach Panel", callback_data="coach_panel"
+                    text=translator.get("buttons.back_to_coach_panel", user_lang),
+                    callback_data="coach_panel",
                 ),
             )
             keyboard.adjust(2)
@@ -481,7 +504,7 @@ class BotHandlers:
             keyboard.adjust(1)
 
             await message.answer(
-                "👥 **Select athlete to remove:**",
+                translator.get("coach.remove_athlete.select", user_lang),
                 reply_markup=keyboard.as_markup(),
                 parse_mode="Markdown",
             )
@@ -553,7 +576,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in language settings: {e}")
-            await callback.answer(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(callback.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_set_language(callback: CallbackQuery):
@@ -588,7 +617,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error setting language: {e}")
-            await callback.answer(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(callback.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await callback.answer(translator.get("common.error", user_lang))
 
     # Coach Callback Handlers
     @staticmethod
@@ -615,7 +650,8 @@ class BotHandlers:
                 keyboard = InlineKeyboardBuilder()
                 keyboard.add(
                     InlineKeyboardButton(
-                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                        text=translator.get("buttons.back_to_coach_panel", user_lang),
+                        callback_data="coach_panel",
                     )
                 )
                 await callback.message.edit_text(
@@ -639,7 +675,8 @@ class BotHandlers:
                         callback_data="coach_guide",
                     ),
                     InlineKeyboardButton(
-                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                        text=translator.get("buttons.back_to_coach_panel", user_lang),
+                        callback_data="coach_panel",
                     ),
                 )
                 keyboard.adjust(2, 1)
@@ -709,7 +746,10 @@ class BotHandlers:
                 # Add button to view athlete details
                 keyboard.add(
                     InlineKeyboardButton(
-                        text=f"📊 {name}", callback_data=f"view_athlete_{athlete.id}"
+                        text=translator.get(
+                            "coach.buttons.view_athlete_details", user_lang, name=name
+                        ),
+                        callback_data=f"view_athlete_{athlete.id}",
                     )
                 )
 
@@ -741,7 +781,8 @@ class BotHandlers:
                     callback_data="coach_stats",
                 ),
                 InlineKeyboardButton(
-                    text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    text=translator.get("buttons.back_to_coach_panel", user_lang),
+                    callback_data="coach_panel",
                 ),
             )
             keyboard.adjust(2, 2, 1, 1)
@@ -1265,13 +1306,15 @@ class BotHandlers:
                 )
 
             keyboard.add(
-                InlineKeyboardButton(text="❌ Cancel", callback_data="coach_athletes")
+                InlineKeyboardButton(
+                    text=translator.get("buttons.cancel", user_lang),
+                    callback_data="coach_athletes",
+                )
             )
             keyboard.adjust(1)
 
             await callback.message.edit_text(
-                "👥 **Remove Athlete**\n\n"
-                "Select the athlete you want to remove from your supervision:",
+                translator.get("coach.remove_athlete.select", user_lang),
                 reply_markup=keyboard.as_markup(),
                 parse_mode="Markdown",
             )
@@ -1378,7 +1421,8 @@ class BotHandlers:
                 keyboard = InlineKeyboardBuilder()
                 keyboard.add(
                     InlineKeyboardButton(
-                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                        text=translator.get("buttons.back_to_coach_panel", user_lang),
+                        callback_data="coach_panel",
                     )
                 )
                 await callback.message.edit_text(
@@ -1714,7 +1758,8 @@ class BotHandlers:
                 keyboard = InlineKeyboardBuilder()
                 keyboard.add(
                     InlineKeyboardButton(
-                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                        text=translator.get("buttons.back_to_coach_panel", user_lang),
+                        callback_data="coach_panel",
                     )
                 )
                 await callback.message.edit_text(
@@ -1728,7 +1773,8 @@ class BotHandlers:
                 keyboard = InlineKeyboardBuilder()
                 keyboard.add(
                     InlineKeyboardButton(
-                        text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                        text=translator.get("buttons.back_to_coach_panel", user_lang),
+                        callback_data="coach_panel",
                     )
                 )
 
@@ -1779,7 +1825,8 @@ class BotHandlers:
 
             keyboard.add(
                 InlineKeyboardButton(
-                    text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    text=translator.get("buttons.back_to_coach_panel", user_lang),
+                    callback_data="coach_panel",
                 )
             )
             keyboard.adjust(1)
@@ -1802,6 +1849,7 @@ class BotHandlers:
             # Extract athlete ID from callback data
             athlete_id = int(callback.data.replace("view_athlete_", ""))
             user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
 
             # Get athlete details and measurements
             async def _get_athlete_details(session):
@@ -1866,15 +1914,15 @@ class BotHandlers:
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
                 InlineKeyboardButton(
-                    text="📈 View Full History",
+                    text=translator.get("coach.buttons.view_full_history", user_lang),
                     callback_data=f"athlete_full_history_{athlete_id}",
                 ),
                 InlineKeyboardButton(
-                    text="🗑️ Remove Athlete",
+                    text=translator.get("coach.buttons.remove_athlete", user_lang),
                     callback_data=f"confirm_remove_athlete_{athlete_id}",
                 ),
                 InlineKeyboardButton(
-                    text="🔙 Back to Progress",
+                    text=translator.get("coach.buttons.view_all_progress", user_lang),
                     callback_data="view_all_athletes_progress",
                 ),
             )
@@ -1997,11 +2045,14 @@ class BotHandlers:
             keyboard = InlineKeyboardBuilder()
             keyboard.add(
                 InlineKeyboardButton(
-                    text="🔔 Notification History",
+                    text=translator.get(
+                        "coach.buttons.notification_history", user_lang
+                    ),
                     callback_data="coach_notification_history",
                 ),
                 InlineKeyboardButton(
-                    text="🔙 Back to Coach Panel", callback_data="coach_panel"
+                    text=translator.get("buttons.back_to_coach_panel", user_lang),
+                    callback_data="coach_panel",
                 ),
             )
             keyboard.adjust(1)
@@ -2059,11 +2110,15 @@ class BotHandlers:
                     callback_data="coach_guide",
                 ),
                 InlineKeyboardButton(
+                    text=translator.get("coach.buttons.cancel_coaching", user_lang),
+                    callback_data="cancel_coaching_confirm",
+                ),
+                InlineKeyboardButton(
                     text=translator.get("buttons.back_to_menu", user_lang),
                     callback_data="back_to_menu",
                 ),
             )
-            keyboard.adjust(2)
+            keyboard.adjust(2, 1, 1)
 
             # Add invisible element to ensure message content is different
             import random
@@ -2099,7 +2154,7 @@ class BotHandlers:
                     callback_data="add_athlete_callback",
                 ),
                 InlineKeyboardButton(
-                    text=translator.get("buttons.back", user_lang),
+                    text=translator.get("buttons.back_to_coach_panel", user_lang),
                     callback_data="coach_panel",
                 ),
             )
@@ -2111,6 +2166,158 @@ class BotHandlers:
             await callback.answer()
         except Exception as e:
             logger.error(f"Error in coach guide: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_cancel_coaching_confirm(callback: CallbackQuery):
+        """Handle showing cancel coaching confirmation."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is actually a coach
+            async def _check_coach_role(session):
+                return await UserRepository.is_user_coach(session, user_id)
+
+            is_coach = await DatabaseManager.execute_with_session(_check_coach_role)
+
+            if not is_coach:
+                await callback.answer(
+                    translator.get("coach.errors.permission_denied", user_lang)
+                )
+                return
+
+            # Show confirmation dialog
+            confirm_text = (
+                f"{translator.get('coach.cancel_coaching.confirm_title', user_lang)}\n\n"
+                f"{translator.get('coach.cancel_coaching.confirm_message', user_lang)}"
+            )
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get(
+                        "coach.cancel_coaching.confirm_button", user_lang
+                    ),
+                    callback_data="cancel_coaching",
+                ),
+                InlineKeyboardButton(
+                    text=translator.get(
+                        "coach.cancel_coaching.cancel_button", user_lang
+                    ),
+                    callback_data="coach_panel",
+                ),
+            )
+            keyboard.adjust(1)
+
+            await callback.message.edit_text(
+                confirm_text,
+                reply_markup=keyboard.as_markup(),
+                parse_mode="Markdown",
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error in cancel coaching confirm: {e}")
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            error_msg = await BotHandlers.get_error_message(user_id)
+            await callback.answer(error_msg)
+
+    @staticmethod
+    async def handle_cancel_coaching(callback: CallbackQuery):
+        """Handle actual cancellation of coaching role."""
+        try:
+            user_id = await BotHandlers.get_or_create_user(callback.from_user)
+            user_lang = await BotHandlers.get_user_language(user_id)
+
+            # Check if user is actually a coach
+            async def _cancel_coaching_role(session):
+                is_coach = await UserRepository.is_user_coach(session, user_id)
+                if not is_coach:
+                    return False, "not_coach"
+
+                try:
+                    # Get current role
+                    current_role = await UserRepository.get_user_role(session, user_id)
+
+                    # Remove all coach-athlete relationships
+                    removed_athletes = (
+                        await CoachAthleteRepository.remove_all_coach_relationships(
+                            session, user_id
+                        )
+                    )
+
+                    # Remove coach notification preferences
+                    from easy_track.coach_notification_repository import (
+                        CoachNotificationRepository,
+                    )
+
+                    await CoachNotificationRepository.delete_coach_preferences(
+                        session, user_id
+                    )
+
+                    # Update user role - if BOTH, change to ATHLETE; if COACH, need to handle
+                    if current_role == UserRole.BOTH:
+                        await UserRepository.update_user_role(
+                            session, user_id, UserRole.ATHLETE
+                        )
+                    elif current_role == UserRole.COACH:
+                        # User was only a coach, change to athlete
+                        await UserRepository.update_user_role(
+                            session, user_id, UserRole.ATHLETE
+                        )
+
+                    await session.commit()
+                    return True, removed_athletes
+
+                except Exception as e:
+                    await session.rollback()
+                    logger.error(f"Error cancelling coaching role: {e}")
+                    return False, "error"
+
+            success, result = await DatabaseManager.execute_with_session(
+                _cancel_coaching_role
+            )
+
+            if not success:
+                if result == "not_coach":
+                    await callback.answer(
+                        translator.get("coach.errors.not_coach", user_lang)
+                    )
+                else:
+                    await callback.message.edit_text(
+                        translator.get("coach.cancel_coaching.error", user_lang),
+                        parse_mode="Markdown",
+                    )
+                return
+
+            # Show success message
+            success_text = translator.get("coach.cancel_coaching.success", user_lang)
+
+            if result == 0:
+                success_text += f"\n\n{translator.get('coach.cancel_coaching.no_athletes_removed', user_lang)}"
+            else:
+                success_text += f"\n\n{translator.get('coach.cancel_coaching.athletes_removed', user_lang, count=result)}"
+
+            keyboard = InlineKeyboardBuilder()
+            keyboard.add(
+                InlineKeyboardButton(
+                    text=translator.get("buttons.back_to_menu", user_lang),
+                    callback_data="back_to_menu",
+                ),
+            )
+
+            await callback.message.edit_text(
+                success_text,
+                reply_markup=keyboard.as_markup(),
+                parse_mode="Markdown",
+            )
+            await callback.answer()
+
+        except Exception as e:
+            logger.error(f"Error cancelling coaching: {e}")
             user_id = await BotHandlers.get_or_create_user(callback.from_user)
             error_msg = await BotHandlers.get_error_message(user_id)
             await callback.answer(error_msg)
@@ -2578,7 +2785,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_create_custom_type: {e}")
-            await callback.answer(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(callback.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_custom_type_name(message: Message, state: FSMContext):
@@ -2635,7 +2848,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_custom_type_name: {e}")
-            await message.reply(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(message.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await message.reply(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_custom_type_unit(message: Message, state: FSMContext):
@@ -2688,7 +2907,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_custom_type_unit: {e}")
-            await message.reply(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(message.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await message.reply(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_custom_type_description(message: Message, state: FSMContext):
@@ -2712,7 +2937,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_custom_type_description: {e}")
-            await message.reply(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(message.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await message.reply(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_skip_description(callback: CallbackQuery, state: FSMContext):
@@ -2723,7 +2954,13 @@ class BotHandlers:
             )
         except Exception as e:
             logger.error(f"Error in handle_skip_description: {e}")
-            await callback.answer(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(callback.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def create_custom_measurement_type(
@@ -2807,12 +3044,12 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in create_custom_measurement_type: {e}")
-            user_lang = "en"
+            user_lang = "uk"  # default fallback
             try:
                 user_id = await BotHandlers.get_or_create_user(message.from_user)
                 user_lang = await BotHandlers.get_user_language(user_id)
             except Exception:
-                user_lang = "en"  # fallback language
+                user_lang = "uk"  # fallback language
             await message.reply(translator.get("custom_types.error", user_lang))
             await state.clear()
 
@@ -3021,10 +3258,10 @@ class BotHandlers:
                     f"{translator.get('view_progress.title', user_lang, type=type_name)}\n\n"
                     f"{translator.get('view_progress.latest', user_lang, value=latest.value, unit=unit_name, date=latest_date)}\n"
                     f"{translator.get('view_progress.total_count', user_lang, count=stats['count'])}\n\n"
-                    f"📊 Statistics:\n"
-                    f"• Average: {stats['average']} {unit_name}\n"
-                    f"• Minimum: {stats['minimum']} {unit_name}\n"
-                    f"• Maximum: {stats['maximum']} {unit_name}\n\n"
+                    f"{translator.get('view_progress.statistics_title', user_lang)}\n"
+                    f"{translator.get('view_progress.average', user_lang)} {stats['average']} {unit_name}\n"
+                    f"{translator.get('view_progress.minimum', user_lang)} {stats['minimum']} {unit_name}\n"
+                    f"{translator.get('view_progress.maximum', user_lang)} {stats['maximum']} {unit_name}\n\n"
                     f"{translator.get('view_progress.recent_measurements', user_lang)}\n"
                 )
 
@@ -3051,7 +3288,14 @@ class BotHandlers:
                 ]
             )
 
-            await callback.message.edit_text(progress_text, reply_markup=keyboard)
+            await safe_edit_message(
+                callback.message,
+                progress_text,
+                reply_markup=keyboard,
+                parse_mode=None,
+                callback=callback,
+                user_lang=user_lang,
+            )
 
         except Exception as e:
             logger.error(f"Error in handle_progress_detail: {e}")
@@ -3246,7 +3490,13 @@ class BotHandlers:
 
         except Exception as e:
             logger.error(f"Error in handle_back_to_menu: {e}")
-            await callback.answer(translator.get("common.error", "en"))
+            user_lang = "uk"  # default fallback
+            try:
+                user_id = await BotHandlers.get_or_create_user(callback.from_user)
+                user_lang = await BotHandlers.get_user_language(user_id)
+            except Exception:
+                pass  # use fallback
+            await callback.answer(translator.get("common.error", user_lang))
 
     @staticmethod
     async def handle_view_by_date(callback: CallbackQuery):
@@ -3423,8 +3673,13 @@ class BotHandlers:
             )
             keyboard.adjust(2, 1)
 
-            await callback.message.edit_text(
-                message_text, reply_markup=keyboard.as_markup()
+            await safe_edit_message(
+                callback.message,
+                message_text,
+                reply_markup=keyboard.as_markup(),
+                parse_mode=None,
+                callback=callback,
+                user_lang=user_lang,
             )
 
         except Exception as e:
@@ -4309,6 +4564,12 @@ dp.callback_query.register(
 )
 dp.callback_query.register(BotHandlers.handle_coach_stats, F.data == "coach_stats")
 dp.callback_query.register(BotHandlers.handle_coach_guide, F.data == "coach_guide")
+dp.callback_query.register(
+    BotHandlers.handle_cancel_coaching_confirm, F.data == "cancel_coaching_confirm"
+)
+dp.callback_query.register(
+    BotHandlers.handle_cancel_coaching, F.data == "cancel_coaching"
+)
 dp.callback_query.register(
     BotHandlers.handle_measure_type, F.data.startswith("measure_")
 )

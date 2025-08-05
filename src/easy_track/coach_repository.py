@@ -253,6 +253,37 @@ class CoachAthleteRepository:
             logger.error(f"Error counting coaches for athlete {athlete_id}: {e}")
             raise
 
+    @staticmethod
+    async def remove_all_coach_relationships(
+        session: AsyncSession, coach_id: int
+    ) -> int:
+        """Remove all athlete relationships for a coach and return count of removed relationships."""
+        try:
+            logger.debug(f"Removing all relationships for coach {coach_id}")
+
+            # Get all active relationships for this coach
+            result = await session.execute(
+                select(CoachAthleteRelationship).where(
+                    CoachAthleteRelationship.coach_id == coach_id,
+                    CoachAthleteRelationship.is_active.is_(True),
+                )
+            )
+            relationships = result.scalars().all()
+
+            removed_count = len(relationships)
+
+            # Deactivate all relationships
+            for relationship in relationships:
+                relationship.is_active = False
+
+            await session.flush()
+            logger.debug(f"Removed {removed_count} relationships for coach {coach_id}")
+            return removed_count
+
+        except Exception as e:
+            logger.error(f"Error removing all relationships for coach {coach_id}: {e}")
+            raise
+
 
 class AthleteCoachRequestRepository:
     """Repository for AthleteCoachRequest operations."""

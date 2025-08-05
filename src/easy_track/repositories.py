@@ -84,7 +84,7 @@ class UserRepository:
     async def get_user_language(session: AsyncSession, telegram_id: int) -> str:
         """Get user's language preference."""
         user = await UserRepository.get_user_by_telegram_id(session, telegram_id)
-        return user.language if user else "en"
+        return user.language if user else "uk"
 
     @staticmethod
     async def update_user_role(

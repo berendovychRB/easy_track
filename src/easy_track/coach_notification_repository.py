@@ -349,3 +349,31 @@ class CoachNotificationRepository:
         except Exception as e:
             logger.error(f"Error initializing default preferences: {e}")
             raise
+
+    @staticmethod
+    async def delete_coach_preferences(session: AsyncSession, coach_id: int) -> int:
+        """Delete all notification preferences for a coach."""
+        try:
+            logger.debug(f"Deleting all preferences for coach {coach_id}")
+
+            # Get all preferences for this coach
+            result = await session.execute(
+                select(CoachNotificationPreference).where(
+                    CoachNotificationPreference.coach_id == coach_id
+                )
+            )
+            preferences = result.scalars().all()
+
+            deleted_count = len(preferences)
+
+            # Delete all preferences
+            for preference in preferences:
+                await session.delete(preference)
+
+            await session.flush()
+            logger.debug(f"Deleted {deleted_count} preferences for coach {coach_id}")
+            return deleted_count
+
+        except Exception as e:
+            logger.error(f"Error deleting preferences for coach {coach_id}: {e}")
+            raise

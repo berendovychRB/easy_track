@@ -217,7 +217,7 @@ logs: ## Show local logs
 
 docker-logs: ## Show Docker Compose logs
 	@echo -e "$(BLUE)Showing Docker logs...$(NC)"
-	$(DOCKER_COMPOSE) logs -f --ansi always
+	$(DOCKER_COMPOSE) logs -f
 
 rebuild-and-start: ## Rebuild containers and start with logs
 	@echo -e "$(BLUE)Rebuilding and starting containers...$(NC)"
@@ -230,7 +230,7 @@ rebuild-and-start: ## Rebuild containers and start with logs
 	$(DOCKER_COMPOSE) up -d
 	@echo -e "$(GREEN)✅ Containers rebuilt and started!$(NC)"
 	@echo -e "$(BLUE)Following logs... (Press Ctrl+C to stop)$(NC)"
-	$(DOCKER_COMPOSE) logs -f --ansi always
+	$(DOCKER_COMPOSE) logs -f
 
 rebuild-fresh: ## Complete rebuild with cleanup, pull latest images, and start with logs
 	@echo -e "$(BLUE)Performing fresh rebuild with cleanup...$(NC)"
@@ -245,7 +245,7 @@ rebuild-fresh: ## Complete rebuild with cleanup, pull latest images, and start w
 	$(DOCKER_COMPOSE) up -d
 	@echo -e "$(GREEN)✅ Fresh rebuild completed and containers started!$(NC)"
 	@echo -e "$(BLUE)Following logs... (Press Ctrl+C to stop)$(NC)"
-	$(DOCKER_COMPOSE) logs -f --ansi always
+	$(DOCKER_COMPOSE) logs -f
 
 docker-clean: ## Clean Docker images and containers
 	@echo -e "$(BLUE)Cleaning Docker resources...$(NC)"
@@ -404,7 +404,7 @@ status: ## Show service status
 monitor: ## Monitor logs in real-time
 	@echo -e "$(BLUE)Monitoring logs...$(NC)"
 	@echo "Press Ctrl+C to stop"
-	@$(DOCKER_COMPOSE) logs -f --ansi always bot postgres
+	@$(DOCKER_COMPOSE) logs -f  bot postgres
 
 # Development Utilities
 # =============================================================================

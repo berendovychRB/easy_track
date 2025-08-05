@@ -110,7 +110,11 @@
     "improvement": "📈 Improvement: {change} {unit}",
     "decline": "📉 Change: {change} {unit}",
     "recent_measurements": "📋 Recent measurements:",
-    "measurement_item": "• {value} {unit} - {date}"
+    "measurement_item": "• {value} {unit} - {date}",
+    "statistics_title": "📊 Statistics:",
+    "average": "• Average:",
+    "minimum": "• Minimum:",
+    "maximum": "• Maximum:"
   },
   "statistics": {
     "title": "📈 Your Statistics",
@@ -162,7 +166,8 @@
     "loading": "⏳ Loading...",
     "no_data": "📊 No data available.",
     "date_format": "{day}/{month}/{year}",
-    "datetime_format": "{day}/{month}/{year} {hour}:{minute}"
+    "datetime_format": "{day}/{month}/{year} {hour}:{minute}",
+    "data_refreshed": "🔄 Data refreshed"
   },
   "notifications": {
     "menu_title": "🔔 Notification Settings",
@@ -223,7 +228,8 @@
       "notification_settings": "🔔 Notifications",
       "view_athlete_details": "📊 {name} Details",
       "view_full_history": "📈 View Full History",
-      "notification_history": "📊 Notification History"
+      "notification_history": "📊 Notification History",
+      "cancel_coaching": "❌ Cancel Coaching"
     },
     "panel": {
       "title": "🎯 **Coach Panel**\n\nChoose an action:"
@@ -232,6 +238,16 @@
       "success": "🎉 **Congratulations!** You are now a coach!\n\nYou can now:\n• Add athletes through the coach panel\n• View your athletes' progress\n• Receive notifications when athletes add measurements\n• Customize your notification preferences\n\nUse the '🎯 Coach Panel' button in the main menu!",
       "welcome_answer": "🎉 Welcome to coaching!",
       "command_success": "🎉 **Congratulations!** You are now a coach!\n\n**You can now:**\n• Add athletes through the coach panel\n• View your athletes\n• Remove athletes\n• View athlete progress\n\nUse /menu and click '🎯 Coach Panel' to access all coach functions!"
+    },
+    "cancel_coaching": {
+      "confirm_title": "⚠️ **Cancel Coaching**",
+      "confirm_message": "Are you sure you want to cancel your coaching role?\n\n❌ **This will result in:**\n• Removal of all your athletes\n• Loss of access to coach panel\n• Deletion of coach notification settings\n\n⚠️ **Warning:** This action is irreversible!",
+      "confirm_button": "❌ Yes, cancel coaching",
+      "cancel_button": "🔙 No, stay as coach",
+      "success": "✅ **Coaching cancelled**\n\nYou are no longer a coach. All your athletes have been removed from your supervision.\n\nYou can become a coach again at any time by using the '🎓 Become Coach' button.",
+      "error": "❌ Error cancelling coaching. Please try again later.",
+      "no_athletes_removed": "ℹ️ You had no athletes to remove.",
+      "athletes_removed": "📊 Athletes removed: {count}"
     },
     "dashboard": {
       "welcome": "🌟 Welcome to coaching!\n\nYou don't have any athletes yet.\nAdd your first athlete to get started and begin receiving notifications when they log measurements!\n\n💡 **Tip:** Athletes can find you by your username to request supervision.",
