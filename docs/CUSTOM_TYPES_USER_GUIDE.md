@@ -1,6 +1,6 @@
 # Custom Measurement Types - User Guide
 
-This guide explains how to create and use custom measurement types in the EasyTrack bot.
+This guide explains how to create and use custom measurement types in the EasySize bot.
 
 ## 🎯 What Are Custom Measurement Types?
 

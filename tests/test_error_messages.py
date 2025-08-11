@@ -215,7 +215,7 @@ async def test_error_message_examples():
 
 
 if __name__ == "__main__":
-    print("🔧 EasyTrack Error Message Localization Test")
+    print("🔧 EasySize Error Message Localization Test")
     print("=" * 50)
     print("This test verifies that error messages are properly localized")
     print("in both English and Ukrainian languages.")

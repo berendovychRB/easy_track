@@ -180,7 +180,7 @@ async def test_callback_handlers():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Functionality Test")
+    print("🚀 EasySize Coach Functionality Test")
     print("=" * 50)
 
     try:

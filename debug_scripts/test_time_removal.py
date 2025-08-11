@@ -299,7 +299,7 @@ async def test_message_uniqueness():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Time Removal Test")
+    print("🚀 EasySize Time Removal Test")
     print("=" * 50)
 
     try:

@@ -253,7 +253,7 @@ async def test_complete_navigation_hierarchy():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Panel Back Button Test")
+    print("🚀 EasySize Coach Panel Back Button Test")
     print("=" * 50)
 
     try:

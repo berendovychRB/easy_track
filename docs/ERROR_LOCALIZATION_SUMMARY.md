@@ -2,7 +2,7 @@
 
 ## Overview
 
-Successfully implemented comprehensive localization for all error messages in the EasyTrack bot. All hardcoded error messages have been replaced with localized translations supporting both English and Ukrainian languages.
+Successfully implemented comprehensive localization for all error messages in the EasySize bot. All hardcoded error messages have been replaced with localized translations supporting both English and Ukrainian languages.
 
 ## ✅ What Was Implemented
 
@@ -201,4 +201,4 @@ Created comprehensive test suite in `test_error_messages.py`:
 
 ---
 
-**Summary**: Error message localization has been successfully implemented across the entire EasyTrack bot, providing a better user experience for both English and Ukrainian speakers while maintaining code quality and enabling future internationalization efforts.
+**Summary**: Error message localization has been successfully implemented across the entire EasySize bot, providing a better user experience for both English and Ukrainian speakers while maintaining code quality and enabling future internationalization efforts.

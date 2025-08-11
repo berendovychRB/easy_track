@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the implementation of removing uninformative timestamps from user-facing messages in the EasyTrack Telegram bot, while preserving meaningful time information and solving the "message not modified" API issue.
+This document describes the implementation of removing uninformative timestamps from user-facing messages in the EasySize Telegram bot, while preserving meaningful time information and solving the "message not modified" API issue.
 
 ## Problem Statement
 

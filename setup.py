@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Setup script for EasyTrack - Telegram Bot for Body Measurement Tracking
+Setup script for EasySize - Telegram Bot for Body Measurement Tracking
 """
 
 from pathlib import Path
@@ -29,8 +29,8 @@ if requirements_file.exists():
 setup(
     name="easy-track",
     version="1.0.0",
-    author="EasyTrack Team",
-    author_email="contact@easytrack.bot",
+    author="EasySize Team",
+    author_email="contact@EasySize.bot",
     description="Telegram bot for tracking body measurements",
     long_description=long_description,
     long_description_content_type="text/markdown",

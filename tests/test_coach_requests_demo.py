@@ -265,7 +265,7 @@ async def demo_coach_request_flow():
 
 
 if __name__ == "__main__":
-    print("🔧 EasyTrack Coach Request System Demo")
+    print("🔧 EasySize Coach Request System Demo")
     print("=" * 50)
     print("This demo will test the new coach-athlete request system")
     print("Make sure you have a running PostgreSQL database configured")

@@ -1,4 +1,4 @@
-# Development Requirements for EasyTrack
+# Development Requirements for EasySize
 # =====================================
 
 # Core dependencies (also in requirements.txt)

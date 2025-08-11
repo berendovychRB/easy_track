@@ -425,7 +425,7 @@ def simulate_user_journey():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Button Translation Test")
+    print("🚀 EasySize Coach Button Translation Test")
     print("=" * 50)
 
     try:

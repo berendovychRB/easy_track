@@ -2,7 +2,7 @@
 
 ## Overview
 
-The EasyTrack bot includes a comprehensive notification system that allows users to set up periodic reminders for taking their body measurements. Users can configure notifications to be sent daily or on specific days of the week at their preferred times.
+The EasySize bot includes a comprehensive notification system that allows users to set up periodic reminders for taking their body measurements. Users can configure notifications to be sent daily or on specific days of the week at their preferred times.
 
 ## Features
 

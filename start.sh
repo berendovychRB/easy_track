@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# EasyTrack Bot - Production Startup Script
+# EasySize Bot - Production Startup Script
 set -e
 
-echo "🚀 Starting EasyTrack Bot..."
+echo "🚀 Starting EasySize Bot..."
 
 # Function to check if a service is ready
 wait_for_service() {
@@ -192,7 +192,7 @@ trap cleanup SIGTERM SIGINT
 # Main execution flow
 main() {
     echo "======================================"
-    echo "🤖 EasyTrack Telegram Bot"
+    echo "🤖 EasySize Telegram Bot"
     echo "📅 $(date)"
     echo "======================================"
 

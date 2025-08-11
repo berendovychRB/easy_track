@@ -1,5 +1,5 @@
 """
-Test package structure and imports for EasyTrack application.
+Test package structure and imports for EasySize application.
 
 This module contains tests to verify that the package structure is correct
 and all modules can be imported properly.
@@ -162,8 +162,8 @@ class TestPackageStructure:
         assert hasattr(easy_track, "__email__")
         assert hasattr(easy_track, "__description__")
 
-        assert easy_track.__author__ == "EasyTrack Team"
-        assert easy_track.__email__ == "contact@easytrack.bot"
+        assert easy_track.__author__ == "EasySize Team"
+        assert easy_track.__email__ == "contact@EasySize.bot"
         assert (
             easy_track.__description__ == "Telegram bot for tracking body measurements"
         )

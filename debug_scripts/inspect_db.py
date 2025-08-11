@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Database Schema Inspector for EasyTrack
+Database Schema Inspector for EasySize
 
 This script inspects the actual database schema to identify the root cause
 of the SQLAlchemy boolean type mismatch error.

@@ -1,4 +1,4 @@
-# Makefile for EasyTrack - Telegram Bot for Body Measurement Tracking
+# Makefile for EasySize - Telegram Bot for Body Measurement Tracking
 # =======================================================================
 
 # Configuration
@@ -37,7 +37,7 @@ NC := \\033[0m # No Color
 # Help target
 # =============================================================================
 help: ## Show this help message
-	@echo -e "$(CYAN)EasyTrack Bot - Makefile Commands$(NC)"
+	@echo -e "$(CYAN)EasySize Bot - Makefile Commands$(NC)"
 	@echo "=================================="
 	@echo ""
 	@echo -e "$(GREEN)Development Commands:$(NC)"
@@ -410,7 +410,7 @@ monitor: ## Monitor logs in real-time
 # =============================================================================
 shell: ## Open Python shell with project context
 	@echo -e "$(BLUE)Opening Python shell...$(NC)"
-	@PYTHONPATH=src $(PYTHON) -c "import sys; sys.path.insert(0, 'src'); from easy_track import *; print('EasyTrack modules loaded!')"
+	@PYTHONPATH=src $(PYTHON) -c "import sys; sys.path.insert(0, 'src'); from easy_track import *; print('EasySize modules loaded!')"
 
 jupyter: ## Start Jupyter notebook for development
 	@echo -e "$(BLUE)Starting Jupyter notebook...$(NC)"

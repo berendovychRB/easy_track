@@ -1,4 +1,4 @@
--- Database initialization script for EasyTrack
+-- Database initialization script for EasySize
 -- This script sets up the database with proper permissions and extensions
 
 -- Create database if it doesn't exist (handled by docker-compose)
@@ -128,7 +128,7 @@ $$ LANGUAGE plpgsql;
 -- Log successful initialization
 DO $$
 BEGIN
-    RAISE NOTICE 'EasyTrack database initialization completed successfully';
+    RAISE NOTICE 'EasySize database initialization completed successfully';
     RAISE NOTICE 'Database: easy_track';
     RAISE NOTICE 'Timestamp: %', NOW();
 END $$;

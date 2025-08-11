@@ -1,13 +1,13 @@
 """
-EasyTrack - Telegram Bot for Body Measurement Tracking
+EasySize - Telegram Bot for Body Measurement Tracking
 
 A powerful and scalable Telegram bot for athletes to track their body measurements
 with a clean database design and modern async architecture.
 """
 
 __version__ = "1.0.0"
-__author__ = "EasyTrack Team"
-__email__ = "contact@easytrack.bot"
+__author__ = "EasySize Team"
+__email__ = "contact@EasySize.bot"
 __description__ = "Telegram bot for tracking body measurements"
 
 # Package metadata

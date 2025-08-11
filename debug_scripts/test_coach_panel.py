@@ -188,7 +188,7 @@ async def test_translation_keys():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Panel Test")
+    print("🚀 EasySize Coach Panel Test")
     print("=" * 50)
 
     try:

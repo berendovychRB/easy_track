@@ -1,7 +1,7 @@
 {
   "commands": {
     "start": {
-      "welcome": "👋 Welcome to EasyTrack, {name}!\n\n📊 Track your body measurements easily:\n• Choose which measurements to track\n• Log your progress regularly\n• View your improvement over time\n\nUse /menu to see all available options.",
+      "welcome": "👋 Welcome to EasySize, {name}!\n\n🎯 **Your personal body measurement tracking assistant**\n\n📋 **Core Features:**\n📝 • Add measurements (weight, circumferences, etc.)\n⚙️ • Manage measurement types\n📊 • View progress and statistics\n📅 • Analyze by time periods\n🔔 • Set up reminders\n\n👥 **For Coaches:**\n🎯 • Full-featured coach panel\n👨‍🎓 • Add and manage athletes\n📈 • Track athletes' progress\n📬 • Activity notification system\n📖 • Detailed bot usage guide\n\n🌍 **Languages:** Ukrainian and English\n\n🚀 **Get Started:** Use /menu to explore all options",
       "error": "❌ Sorry, something went wrong. Please try again."
     },
     "menu": {

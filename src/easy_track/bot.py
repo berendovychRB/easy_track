@@ -4668,7 +4668,7 @@ async def init_measurement_types():
 async def main():
     """Main bot execution function."""
     try:
-        logger.info("Starting EasyTrack bot...")
+        logger.info("Starting EasySize bot...")
 
         # Initialize database
         await init_db()

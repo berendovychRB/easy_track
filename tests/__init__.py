@@ -1,7 +1,7 @@
 """
-Test package for EasyTrack - Telegram Bot for Body Measurement Tracking
+Test package for EasySize - Telegram Bot for Body Measurement Tracking
 
-This package contains all test files for the EasyTrack application.
+This package contains all test files for the EasySize application.
 """
 
 import sys

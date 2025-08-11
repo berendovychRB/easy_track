@@ -215,7 +215,7 @@ async def test_coach_functionality_integration():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Panel Translation Test")
+    print("🚀 EasySize Coach Panel Translation Test")
     print("=" * 50)
 
     try:

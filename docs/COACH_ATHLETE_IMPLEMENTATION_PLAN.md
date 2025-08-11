@@ -2,7 +2,7 @@
 
 ## 🎯 Feature Overview
 
-Add coach-athlete relationship functionality to the EasyTrack Telegram bot, allowing coaches to supervise athletes and track their measurements.
+Add coach-athlete relationship functionality to the EasySize Telegram bot, allowing coaches to supervise athletes and track their measurements.
 
 **Goals:**
 - Coaches can add users as subordinates (athletes)

@@ -284,7 +284,7 @@ def test_edge_cases():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Cancel Coaching Test")
+    print("🚀 EasySize Cancel Coaching Test")
     print("=" * 40)
 
     try:

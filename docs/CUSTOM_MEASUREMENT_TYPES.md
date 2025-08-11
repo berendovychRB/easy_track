@@ -4,7 +4,7 @@ This document describes the new custom measurement types feature that allows use
 
 ## Overview
 
-The EasyTrack bot now supports user-created custom measurement types. Users can create their own measurement types with custom names, units, and descriptions, which are private to each user.
+The EasySize bot now supports user-created custom measurement types. Users can create their own measurement types with custom names, units, and descriptions, which are private to each user.
 
 ## Features
 

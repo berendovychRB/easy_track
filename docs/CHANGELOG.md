@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to EasyTrack will be documented in this file.
+All notable changes to EasySize will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### 🎉 Initial Release
 
-This is the first stable release of EasyTrack - a comprehensive Telegram bot for tracking body measurements.
+This is the first stable release of EasySize - a comprehensive Telegram bot for tracking body measurements.
 
 ### ✨ Added
 

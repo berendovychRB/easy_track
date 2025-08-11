@@ -1,5 +1,5 @@
 """
-Main entry point for EasyTrack Bot application.
+Main entry point for EasySize Bot application.
 """
 
 import asyncio

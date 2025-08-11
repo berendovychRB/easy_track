@@ -262,7 +262,7 @@ async def simulate_user_interactions():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Panel Fixes Test")
+    print("🚀 EasySize Coach Panel Fixes Test")
     print("=" * 50)
 
     try:

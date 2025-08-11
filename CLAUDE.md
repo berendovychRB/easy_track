@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-EasyTrack is a Telegram bot for tracking body measurements built with Python 3.11+, aiogram 3.x, SQLAlchemy 2.0 (async), and PostgreSQL. The architecture uses async/await throughout with a repository pattern for data access.
+EasySize is a Telegram bot for tracking body measurements built with Python 3.11+, aiogram 3.x, SQLAlchemy 2.0 (async), and PostgreSQL. The architecture uses async/await throughout with a repository pattern for data access.
 
 ## Development Commands
 

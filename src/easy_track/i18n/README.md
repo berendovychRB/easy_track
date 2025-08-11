@@ -1,6 +1,6 @@
 # Internationalization (i18n) System
 
-This directory contains the internationalization system for the EasyTrack bot, supporting multiple languages for all user-facing text.
+This directory contains the internationalization system for the EasySize bot, supporting multiple languages for all user-facing text.
 
 ## Supported Languages
 
@@ -29,7 +29,7 @@ Translation files are JSON files organized in a hierarchical structure using dot
 {
   "commands": {
     "start": {
-      "welcome": "👋 Welcome to EasyTrack, {name}!"
+      "welcome": "👋 Welcome to EasySize, {name}!"
     }
   },
   "buttons": {

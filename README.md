@@ -1,4 +1,4 @@
-# 🏃‍♂️ EasyTrack - Telegram Body Measurement Bot
+# 🏃‍♂️ EasySize - Telegram Body Measurement Bot
 
 A powerful and scalable Telegram bot for athletes to track their body measurements with a clean database design and modern async architecture.
 

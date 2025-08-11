@@ -289,7 +289,7 @@ async def test_guide_content_display():
 
 
 if __name__ == "__main__":
-    print("🚀 EasyTrack Coach Guide Fix Test")
+    print("🚀 EasySize Coach Guide Fix Test")
     print("=" * 50)
 
     try:

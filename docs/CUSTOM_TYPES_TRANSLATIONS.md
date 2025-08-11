@@ -1,6 +1,6 @@
 # Custom Measurement Types - Translation Implementation
 
-This document details the translation implementation for the custom measurement types feature in EasyTrack bot.
+This document details the translation implementation for the custom measurement types feature in EasySize bot.
 
 ## 🌐 Supported Languages
 
